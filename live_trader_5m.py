@@ -81,6 +81,39 @@ def load_env_config() -> Dict[str, str]:
                     cfg[k.strip()] = v.strip()
     return cfg
 
+def _atomic_json_write(path: str, data: dict):
+    """Grava JSON de forma atomica usando arquivo temporario para evitar corrupcao em caso de queda"""
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception as e:
+        print(f"[Erro na gravacao atomica do JSON {path}]: {e}")
+
+def _acquire_instance_lock(lock_path: str):
+    """Garante que apenas uma instancia do bot esteja rodando por vez"""
+    if sys.platform == "win32":
+        import msvcrt
+        f = open(lock_path, "w")
+        try:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            return f
+        except OSError:
+            print("\n[ERRO FATAL] Outra instancia do bot ja esta rodando (lock ativo). Abortando.")
+            sys.exit(1)
+    else:
+        import fcntl
+        f = open(lock_path, "w")
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except OSError:
+            print("\n[ERRO FATAL] Outra instancia do bot ja esta rodando (lock ativo). Abortando.")
+            sys.exit(1)
+
 GEOBLOCK_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
 
 def check_geoblock() -> Dict[str, Any]:
@@ -154,8 +187,9 @@ def get_chainlink_price() -> Optional[float]:
         except Exception:
             continue
 
-    # Fallback de contingencia na Binance se todas as RPCs falharem
-    return get_binance_spot()
+    # Se todas as RPCs da Polygon falharem, retorna None em vez de mascarar com Binance spot
+    print("   [ALERTA RPC] Todas as RPCs Polygon para Oraculo Chainlink falharam nesta chamada.")
+    return None
 
 def get_candle_open(window_ts: int) -> Optional[float]:
     """Fallback: Busca preco de abertura da vela de 5m na Binance se necessario"""
@@ -351,10 +385,28 @@ class LiveTrader:
         self.liq_watcher = get_liquidation_watcher()
         self.cvd_watcher = get_cvd_watcher()
 
+        self.execution_mode = self.cfg.get("EXECUTION_MODE", "live").lower()
+        self.lock_file = None
         self.journal_lock = threading.Lock()
+        self.traded_windows = self._load_traded_windows()
         self._init_journal()
         self._init_clob()
         self._start_async_reconciler()
+
+    def _load_traded_windows(self) -> set:
+        """Carrega todas as janelas (window_ts) ja negociadas para evitar duplicacoes no restart"""
+        traded = set()
+        if os.path.exists(JOURNAL_JSON):
+            try:
+                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for t in data.get("trades", []):
+                    w = t.get("window_ts")
+                    if w:
+                        traded.add(int(w))
+            except Exception:
+                pass
+        return traded
 
     def _init_journal(self):
         """Inicializa arquivos de auditoria se nao existirem"""
@@ -378,15 +430,28 @@ class LiveTrader:
                     self.wins = data.get("wins", 0)
                     self.losses = data.get("losses", 0)
                     self.cycles_executed = data.get("cycles_executed", 0)
-                    self.recent_winners = [r["winner"] for r in data.get("trades", [])[-5:]]
-            except Exception:
-                pass
+                    self.recent_winners = [r["winner"] for r in data.get("trades", [])[-5:] if r.get("winner")]
+            except Exception as ej:
+                print(f"[ALERTA CRÍTICO] Falha ao ler {JOURNAL_JSON}: {ej}. Criando backup de seguranca.")
+                try:
+                    os.replace(JOURNAL_JSON, f"{JOURNAL_JSON}.corrupt-{int(time.time())}")
+                except Exception:
+                    pass
 
     def _init_clob(self):
         """Configura e autentica o cliente CLOB V2 Polymarket com Poly1271"""
+        if self.execution_mode == "paper":
+            print("-> [MODO PAPER ATIVO]: Nenhuma ordem real sera enviada para a CLOB. Operando em simulacao limpa.")
+            self.client = None
+            bal = 20.00
+            self.session_initial_balance = bal
+            self.current_balance = bal
+            print(f"   -> Saldo Simulado em Carteira: ${bal:.2f} USDC (Modo Paper)")
+            return
+
         if not self.private_key:
             print("[ERRO FATAL] POLYGON_PRIVATE_KEY nao configurada no .env!")
-            return
+            sys.exit(1)
 
         print(f"-> Inicializando ClobClient V2 (Funder Safe: {self.funder_address})...")
         try:
@@ -534,8 +599,7 @@ class LiveTrader:
                                 jdata["session_pnl"] = round(real_bal - jdata.get("session_initial_balance", real_bal), 2)
                                 jdata["total_pnl_vs_deposit"] = round(real_bal - self.initial_deposit, 2)
 
-                                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                                    json.dump(jdata, f, indent=2)
+                                _atomic_json_write(JOURNAL_JSON, jdata)
 
                                 self.wins = total_w
                                 self.losses = total_l
@@ -546,20 +610,24 @@ class LiveTrader:
 
                         if os.path.exists(JOURNAL_CSV):
                             try:
-                                with open(JOURNAL_CSV, "r", encoding="utf-8") as f:
-                                    csv_lines = f.readlines()
-                                for idx, line in enumerate(csv_lines):
-                                    parts = line.split(",")
-                                    if len(parts) > 17 and parts[1] == str(cycle_num):
-                                        parts[14] = official_winner
-                                        parts[15] = new_res_str
-                                        parts[16] = str(new_total_payout)
-                                        parts[17] = str(new_cycle_pnl)
-                                        parts[19] = str(round(real_bal, 2))
-                                        csv_lines[idx] = ",".join(parts)
-                                        break
-                                with open(JOURNAL_CSV, "w", encoding="utf-8") as f:
-                                    f.writelines(csv_lines)
+                                rows = []
+                                with open(JOURNAL_CSV, "r", newline="", encoding="utf-8") as f:
+                                    reader = csv.reader(f)
+                                    for r in reader:
+                                        if len(r) > 17 and r[1] == str(cycle_num):
+                                            r[14] = official_winner
+                                            r[15] = new_res_str
+                                            r[16] = str(new_total_payout)
+                                            r[17] = str(new_cycle_pnl)
+                                            r[19] = str(round(real_bal, 2))
+                                        rows.append(r)
+                                tmp_csv = JOURNAL_CSV + ".tmp"
+                                with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
+                                    writer = csv.writer(f)
+                                    writer.writerows(rows)
+                                    f.flush()
+                                    os.fsync(f.fileno())
+                                os.replace(tmp_csv, JOURNAL_CSV)
                             except Exception as ec:
                                 print(f"       [Erro ao atualizar CSV na reconciliação]: {ec}")
 
@@ -582,8 +650,7 @@ class LiveTrader:
                                 jdata["current_balance"] = real_bal
                                 jdata["session_pnl"] = round(real_bal - jdata.get("session_initial_balance", real_bal), 2)
                                 jdata["total_pnl_vs_deposit"] = round(real_bal - self.initial_deposit, 2)
-                                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                                    json.dump(jdata, f, indent=2)
+                                _atomic_json_write(JOURNAL_JSON, jdata)
                                 self.current_balance = real_bal
                                 self.session_pnl = jdata["session_pnl"]
                             except Exception as ej:
@@ -591,16 +658,20 @@ class LiveTrader:
 
                         if os.path.exists(JOURNAL_CSV):
                             try:
-                                with open(JOURNAL_CSV, "r", encoding="utf-8") as f:
-                                    csv_lines = f.readlines()
-                                for idx, line in enumerate(csv_lines):
-                                    parts = line.split(",")
-                                    if len(parts) > 19 and parts[1] == str(cycle_num):
-                                        parts[19] = str(round(real_bal, 2))
-                                        csv_lines[idx] = ",".join(parts)
-                                        break
-                                with open(JOURNAL_CSV, "w", encoding="utf-8") as f:
-                                    f.writelines(csv_lines)
+                                rows = []
+                                with open(JOURNAL_CSV, "r", newline="", encoding="utf-8") as f:
+                                    reader = csv.reader(f)
+                                    for r in reader:
+                                        if len(r) > 19 and r[1] == str(cycle_num):
+                                            r[19] = str(round(real_bal, 2))
+                                        rows.append(r)
+                                tmp_csv = JOURNAL_CSV + ".tmp"
+                                with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
+                                    writer = csv.writer(f)
+                                    writer.writerows(rows)
+                                    f.flush()
+                                    os.fsync(f.fileno())
+                                os.replace(tmp_csv, JOURNAL_CSV)
                             except Exception as ec:
                                 print(f"       [Erro ao atualizar CSV na confirmação]: {ec}")
 
@@ -610,6 +681,8 @@ class LiveTrader:
 
     def get_usdc_balance(self) -> float:
         """Consulta o saldo real de USDC na conta Polymarket via CLOB V2"""
+        if self.execution_mode == "paper":
+            return self.current_balance
         if not self.client:
             return 0.0
         try:
@@ -621,10 +694,12 @@ class LiveTrader:
             return self.current_balance
         except Exception as e:
             print(f"[Aviso ao buscar saldo]: {e}")
-            return self.current_balance
+            return -1.0
 
     def get_token_balance(self, token_id: str) -> float:
         """Consulta o saldo real de cotas de um token condicional na carteira Safe"""
+        if self.execution_mode == "paper":
+            return 0.0
         if not self.client or not token_id:
             return 0.0
         try:
@@ -635,8 +710,60 @@ class LiveTrader:
         except Exception as e:
             return 0.0
 
+    def _is_past_deadline(self, window_ts: int, max_elapsed: int = 295) -> bool:
+        """Retorna True se a janela estiver muito proxima do fim (evita ordens pos-fechamento)"""
+        return (time.time() - window_ts) >= max_elapsed
+
+    def _execute_emergency_stop_loss(self, target_token: str, target_side: str, shares: float, window_ts: int) -> Dict[str, Any]:
+        """Tenta liquidar posicao perdedora antecipadamente na CLOB antes do fechamento"""
+        if self._is_past_deadline(window_ts, 295):
+            print("       [Stop-Loss] Prazo limite de 295s atingido. Ordem abortada.")
+            return {"success": False}
+
+        ob_primary = get_clob_orderbook(target_token)
+        best_bid_primary = ob_primary["best_bid"] if ob_primary else 0.0
+        if best_bid_primary >= STOP_LOSS_MIN_BID:
+            real_tok = self.get_token_balance(target_token) if self.execution_mode != "paper" else shares
+            raw_s = real_tok if real_tok > 0 else shares
+            sell_shares = int(raw_s * 100) / 100.0
+            if sell_shares >= 0.1:
+                print(f"    [🚨 STOP-LOSS DE EMERGENCIA]: Ha liquidez para estancar a perda! Best Bid de {target_side}: ${best_bid_primary:.2f} (>= ${STOP_LOSS_MIN_BID:.2f}).")
+                print(f"       Vendendo {sell_shares:.2f} cotas de {target_side} a mercado para resgatar caixa...")
+                sl_res = self.place_live_order(target_token, "SELL", sell_shares, price=best_bid_primary)
+                if sl_res and sl_res.get("status") == "SUCCESS":
+                    s_resp = sl_res.get("response", {})
+                    s_hashes = s_resp.get("transactionsHashes") or []
+                    early_tx = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
+                    early_payout = round(sell_shares * best_bid_primary, 2)
+                    print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_tx}")
+                    print(f"       -> Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
+                    return {
+                        "success": True,
+                        "tx_hash": early_tx,
+                        "price": best_bid_primary,
+                        "payout": early_payout,
+                        "shares": sell_shares
+                    }
+                else:
+                    print(f"       [Falha no stop-loss]: {sl_res.get('error') if sl_res else 'Erro desconhecido'}")
+        else:
+            print(f"       [Stop-loss dispensado]: Best Bid (${best_bid_primary:.2f}) < ${STOP_LOSS_MIN_BID:.2f}. Mantendo risco travado em $1.00.")
+        return {"success": False}
+
     def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None, max_price: Optional[float] = None) -> Dict[str, Any]:
         """Cria e envia ordem a mercado real para o Polymarket CLOB V2 (BUY em USDC, SELL em cotas)"""
+        if self.execution_mode == "paper":
+            mock_id = f"paper-{int(time.time()*1000)}"
+            mock_tx = f"0xpaper{int(time.time()*1000):016x}"
+            return {
+                "status": "SUCCESS",
+                "response": {
+                    "orderID": mock_id,
+                    "transactionsHashes": [mock_tx],
+                    "paper": True
+                }
+            }
+
         if not self.client:
             return {"status": "ERROR", "error": "ClobClient desconectado"}
 
@@ -655,25 +782,6 @@ class LiveTrader:
             return {"status": "SUCCESS", "response": resp}
         except Exception as e:
             err_str = str(e)
-            if "no match" in err_str:
-                price_ceiling = max_price if max_price is not None else 0.97
-                if order_price > 0:
-                    fallback_p = min(price_ceiling, round(order_price + 0.02, 2)) if side == "BUY" else max(0.01, round(order_price - 0.02, 2))
-                else:
-                    fallback_p = min(price_ceiling, 0.85) if side == "BUY" else 0.70
-                try:
-                    market_args_fb = MarketOrderArgsV2(
-                        token_id=token_id,
-                        amount=amount,
-                        side=side,
-                        price=fallback_p,
-                        order_type=OrderType.FAK
-                    )
-                    signed_fb = self.client.create_market_order(market_args_fb)
-                    resp_fb = self.client.post_order(signed_fb, order_type=OrderType.FAK)
-                    return {"status": "SUCCESS", "response": resp_fb}
-                except Exception as e2:
-                    return {"status": "FAILED", "error": f"{err_str} | Fallback: {e2}"}
             return {"status": "FAILED", "error": err_str}
 
     def run_trading_cycle(self):
@@ -687,6 +795,13 @@ class LiveTrader:
         print(f"\n=================================================================")
         print(f"[CICLO ATIVO] Janela: {time_str} (Restam {seconds_left}s) | P&L Sessao: ${self.session_pnl:+.2f}")
         print(f"=================================================================")
+
+        # Deduplicacao de Janela: impede reexecucao no mesmo candle de 5m em caso de restart
+        if window_ts in self.traded_windows:
+            print(f"    [DEDUPLICACAO] Janela {time_str} ({window_ts}) ja foi processada nesta sessao. Aguardando proximo candle...")
+            wait_time = max(5, 300 - seconds_elapsed + 2)
+            time.sleep(min(wait_time, 15))
+            return
 
         # 0. Verificacao de Geoblock em Tempo Real
         geo = check_geoblock()
@@ -711,6 +826,10 @@ class LiveTrader:
 
         # 2. Verifica Saldo Disponivel
         bal = self.get_usdc_balance()
+        if bal < 0:
+            print("    [!] Falha de comunicacao ao consultar saldo USDC na Polygon. Pulando rodada por seguranca.")
+            time.sleep(15)
+            return
         print(f"    Saldo Real em Carteira: ${bal:.2f} USDC")
         if bal < FIXED_STAKE:
             print(f"    [!] Saldo insuficiente para aposta de ${FIXED_STAKE:.2f} USDC.")
@@ -719,9 +838,13 @@ class LiveTrader:
             return
 
         # 3. Busca Strike Price Oficial (Oraculo Chainlink) e Abertura Binance
+        strike_captured_late = False
         if window_ts in self.candle_strikes:
             strike = self.candle_strikes[window_ts]
         else:
+            if seconds_elapsed > 20:
+                print(f"    [AVISO TEMPO] Entrada tardia ({seconds_elapsed}s decorridos na vela). Strike :00 Chainlink nao foi amostrado no inicio.")
+                strike_captured_late = True
             strike = get_chainlink_price()
             if strike:
                 self.candle_strikes[window_ts] = strike
@@ -837,6 +960,14 @@ class LiveTrader:
                     print("       -> Preservando capital! Aposta cancelada para nao operar contra a lideranca da Binance.")
                     should_trade_primary = False
 
+        if strike_captured_late and should_trade_primary:
+            print(f"\n    [🛡️ FILTRO TEMPO]: Strike K amostrado com atraso (>20s). Entrada primaria cancelada para evitar delta contaminado.")
+            should_trade_primary = False
+
+        if should_trade_primary and self._is_past_deadline(window_ts, 295):
+            print(f"\n    [🛡️ FILTRO DEADLINE]: Tempo decorrido (>295s) proximo ao fechamento. Entrada primaria abortada.")
+            should_trade_primary = False
+
         # 6. Execucao da Ordem Real Primaria (se aprovada pelos filtros)
         has_primary = False
         sold_early = False
@@ -934,21 +1065,39 @@ class LiveTrader:
         if should_trade_primary:
             print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice): ${estimated_price:.2f}")
             print(f"       Racional: {rationale}")
-            print(f"       Enviando ordem real de ${FIXED_STAKE:.2f} USDC para a CLOB V2...")
+            print(f"       Enviando ordem de ${FIXED_STAKE:.2f} USDC para a CLOB V2...")
             limit_p = min(0.66, round(estimated_price + 0.01, 2))
             order_res = self.place_live_order(target_token, "BUY", FIXED_STAKE, price=limit_p, max_price=0.66)
             print(f"       Resultado do Envio Primário: {order_res.get('status')}")
             if order_res.get("status") == "SUCCESS":
-                has_primary = True
                 resp_data = order_res.get("response", {})
                 order_id = resp_data.get("orderID") or "EXECUTED"
                 tx_hashes = resp_data.get("transactionsHashes") or []
                 tx_hash = tx_hashes[0] if tx_hashes else ""
-                time.sleep(1.0)
-                real_tok_bal = self.get_token_balance(target_token)
-                shares = real_tok_bal if real_tok_bal > 0 else round(FIXED_STAKE / max(0.01, estimated_price), 4)
-                print(f"       -> ORDEM PRIMÁRIA EXECUTADA! ID: {order_id} | Tx: {tx_hash} | {shares:.4f} cotas reais")
+
+                if self.execution_mode == "paper":
+                    has_primary = True
+                    shares = round(FIXED_STAKE / max(0.01, estimated_price), 4)
+                    print(f"       -> [MODO PAPER] ORDEM PRIMÁRIA SIMULADA! ID: {order_id} | {shares:.4f} cotas @ ${estimated_price:.2f}")
+                else:
+                    real_tok_bal = 0.0
+                    for _attempt in range(3):
+                        time.sleep(1.5)
+                        real_tok_bal = self.get_token_balance(target_token)
+                        if real_tok_bal > 0:
+                            break
+                    if real_tok_bal > 0:
+                        has_primary = True
+                        shares = real_tok_bal
+                        print(f"       -> ORDEM PRIMÁRIA EXECUTADA! ID: {order_id} | Tx: {tx_hash} | {shares:.4f} cotas reais confirmadas")
+                    else:
+                        has_primary = False
+                        order_id = "UNFILLED"
+                        tx_hash = ""
+                        print(f"       [AVISO EXECUÇÃO] Ordem enviada mas sem liquidez no limite (${limit_p:.2f}). Nenhuma cota recebida (FAK não-preenchido).")
+                        print("       -> Entrada primária desconsiderada (evitando registro de posição fantasma).")
             else:
+                has_primary = False
                 order_id = "FAILED"
                 tx_hash = ""
                 print(f"       [Falha no envio da ordem]: {order_res.get('error')}")
@@ -969,6 +1118,7 @@ class LiveTrader:
         payout_hedge = 0.0
 
         scour_executed = False
+        scour_attempted = False
         scour_side = ""
         scour_token = ""
         scour_order_id = ""
@@ -999,13 +1149,14 @@ class LiveTrader:
                         min_tp_price = max(TAKE_PROFIT_PRICE_THRESHOLD, round(estimated_price * 1.30, 3))
                         if cur_bid >= min_tp_price and bid_size >= 1.0:
                             print(f"\n    [💰 SIRMARTINGALE TAKE-PROFIT!] Aos {elapsed}s: CLOB Best Bid atingiu ${cur_bid:.2f} (>= ${min_tp_price:.2f}, entrada: ${estimated_price:.2f})!")
-                            real_tok = self.get_token_balance(target_token)
+                            real_tok = self.get_token_balance(target_token) if self.execution_mode != "paper" else shares
                             raw_s = real_tok if real_tok > 0 else shares
                             sell_shares = int(raw_s * 100) / 100.0
-                            if sell_shares >= 0.1:
+                            sell_res = None
+                            if sell_shares >= 0.1 and not self._is_past_deadline(window_ts, 295):
                                 print(f"       Vendendo {sell_shares:.2f} cotas na CLOB para travar lucro garantido (~+{((cur_bid/max(0.01, estimated_price)-1)*100):.0f}%)...")
                                 sell_res = self.place_live_order(target_token, "SELL", sell_shares, price=cur_bid)
-                            if sell_res.get("status") == "SUCCESS":
+                            if sell_res and sell_res.get("status") == "SUCCESS":
                                 sold_early = True
                                 has_primary = False
                                 s_resp = sell_res.get("response", {})
@@ -1015,7 +1166,7 @@ class LiveTrader:
                                 early_sell_payout = round(sell_shares * cur_bid, 2)
                                 print(f"       -> VENDA ANTECIPADA EXECUTADA! Tx: {early_sell_tx_hash} | Payout Travado: ${early_sell_payout:.2f} USDC")
                             else:
-                                print(f"       [Falha na venda antecipada]: {sell_res.get('error')}")
+                                print(f"       [Falha na venda antecipada]: {sell_res.get('error') if sell_res else 'Saldo insuficiente ou deadline excedido'}")
 
                 # --- DEFESA: Bonereaper Hedge Dinamico (reversao no Chainlink ou confirmacao na Binance) ---
                 reversal = False
@@ -1040,25 +1191,55 @@ class LiveTrader:
                     hedge_best_ask = ob_hedge["best_ask"] if ob_hedge else 0.0
 
                     cur_bal = self.get_usdc_balance()
-                    # REGRA DE OURO QUANTITATIVA:
-                    # Se hedge_best_ask <= HEDGE_MAX_PRICE ($0.50), comprar a ponta oposta cobre o prejuizo ou da lucro ($1.00 / <=0.50 >= $2.00).
-                    # Se hedge_best_ask > HEDGE_MAX_PRICE, comprar o hedge garante EV negativo! Nesse caso, acionamos STOP-LOSS (venda da cota original).
-                    if 0.01 <= hedge_best_ask <= HEDGE_MAX_PRICE and cur_bal >= HEDGE_STAKE:
+                    if 0.01 <= hedge_best_ask <= HEDGE_MAX_PRICE and cur_bal >= HEDGE_STAKE and not self._is_past_deadline(window_ts, 295):
                         print(f"    [🛡️ BONEREAPER HEDGE ATIVADO]: Livro CLOB com preco favoravel para hedge: ${hedge_best_ask:.2f} (<= ${HEDGE_MAX_PRICE:.2f}).")
                         print(f"       Enviando ordem de protecao de ${HEDGE_STAKE:.2f} USDC em {hedge_side}...")
                         order_limit_p = min(HEDGE_MAX_PRICE, round(hedge_best_ask + 0.01, 2))
                         hedge_res = self.place_live_order(hedge_token, "BUY", HEDGE_STAKE, price=order_limit_p, max_price=HEDGE_MAX_PRICE)
                         if hedge_res.get("status") == "SUCCESS":
-                            hedged = True
-                            h_resp = hedge_res.get("response", {})
-                            hedge_order_id = h_resp.get("orderID") or "EXECUTED"
-                            h_hashes = h_resp.get("transactionsHashes") or []
-                            hedge_tx_hash = h_hashes[0] if h_hashes else hedge_order_id
-                            hedge_price = hedge_best_ask
-                            hedge_shares = round(HEDGE_STAKE / max(0.01, hedge_price), 4)
-                            print(f"       -> HEDGE EXECUTADO COM SUCESSO! Tx: {hedge_tx_hash} | {hedge_shares} cotas @ ${hedge_price:.2f}")
+                            if self.execution_mode == "paper":
+                                hedged = True
+                                h_resp = hedge_res.get("response", {})
+                                hedge_order_id = h_resp.get("orderID") or "EXECUTED"
+                                h_hashes = h_resp.get("transactionsHashes") or []
+                                hedge_tx_hash = h_hashes[0] if h_hashes else hedge_order_id
+                                hedge_price = hedge_best_ask
+                                hedge_shares = round(HEDGE_STAKE / max(0.01, hedge_price), 4)
+                                print(f"       -> [MODO PAPER] HEDGE SIMULADO COM SUCESSO! Tx: {hedge_tx_hash} | {hedge_shares} cotas @ ${hedge_price:.2f}")
+                            else:
+                                real_h_tok = 0.0
+                                for _ in range(3):
+                                    time.sleep(1.5)
+                                    real_h_tok = self.get_token_balance(hedge_token)
+                                    if real_h_tok > 0:
+                                        break
+                                if real_h_tok > 0:
+                                    hedged = True
+                                    h_resp = hedge_res.get("response", {})
+                                    hedge_order_id = h_resp.get("orderID") or "EXECUTED"
+                                    h_hashes = h_resp.get("transactionsHashes") or []
+                                    hedge_tx_hash = h_hashes[0] if h_hashes else hedge_order_id
+                                    hedge_price = hedge_best_ask
+                                    hedge_shares = real_h_tok
+                                    print(f"       -> HEDGE EXECUTADO COM SUCESSO! Tx: {hedge_tx_hash} | {hedge_shares:.4f} cotas @ ${hedge_price:.2f}")
+                                else:
+                                    print(f"       [AVISO HEDGE] Ordem enviada mas cota de hedge nao preenchida (FAK). Acionando Stop-Loss de emergencia...")
+                                    sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                                    if sl_data["success"]:
+                                        sold_early = True
+                                        has_primary = False
+                                        early_sell_tx_hash = sl_data["tx_hash"]
+                                        early_sell_price = sl_data["price"]
+                                        early_sell_payout = sl_data["payout"]
                         else:
-                            print(f"       [Falha no hedge]: {hedge_res.get('error')}")
+                            print(f"       [Falha no hedge]: {hedge_res.get('error')}. Acionando Stop-Loss de emergencia...")
+                            sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                            if sl_data["success"]:
+                                sold_early = True
+                                has_primary = False
+                                early_sell_tx_hash = sl_data["tx_hash"]
+                                early_sell_price = sl_data["price"]
+                                early_sell_payout = sl_data["payout"]
                     else:
                         if hedge_best_ask > HEDGE_MAX_PRICE:
                             print(f"    [🛡️ HEDGE RECUSADO - EV NEGATIVO]: Preco de {hedge_side} esta em ${hedge_best_ask:.2f} (> ${HEDGE_MAX_PRICE:.2f}).")
@@ -1067,43 +1248,26 @@ class LiveTrader:
                             print(f"       [Aviso Hedge] Saldo insuficiente (${cur_bal:.2f}) para hedge de ${HEDGE_STAKE:.2f}")
 
                         # PROTOCOLO DE STOP-LOSS ANTECIPADO: Vender cotas da posicao perdedora na CLOB
-                        ob_primary = get_clob_orderbook(target_token)
-                        best_bid_primary = ob_primary["best_bid"] if ob_primary else 0.0
-                        if best_bid_primary >= STOP_LOSS_MIN_BID:
-                            real_tok = self.get_token_balance(target_token)
-                            raw_s = real_tok if real_tok > 0 else shares
-                            sell_shares = int(raw_s * 100) / 100.0
-                            if sell_shares >= 0.1:
-                                print(f"    [🚨 STOP-LOSS DE EMERGENCIA]: Ha liquidez para estancar a perda! Best Bid de {target_side}: ${best_bid_primary:.2f} (>= ${STOP_LOSS_MIN_BID:.2f}).")
-                                print(f"       Vendendo {sell_shares:.2f} cotas de {target_side} (Saldo Real: {raw_s:.4f}) a mercado para resgatar caixa...")
-                                sl_res = self.place_live_order(target_token, "SELL", sell_shares, price=best_bid_primary)
-                            if sl_res.get("status") == "SUCCESS":
-                                sold_early = True
-                                has_primary = False
-                                s_resp = sl_res.get("response", {})
-                                s_hashes = s_resp.get("transactionsHashes") or []
-                                early_sell_tx_hash = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
-                                early_sell_price = best_bid_primary
-                                early_sell_payout = round(sell_shares * early_sell_price, 2)
-                                print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_sell_tx_hash}")
-                                print(f"       -> Saldo resgatado da posicao: ${early_sell_payout:.2f} USDC (Perda estancada em -${(1.00 - early_sell_payout):.2f})")
-                            else:
-                                print(f"       [Falha no stop-loss]: {sl_res.get('error')}")
-                        else:
-                            print(f"       [Stop-loss dispensado]: Best Bid (${best_bid_primary:.2f}) < ${STOP_LOSS_MIN_BID:.2f}. Mantendo posicao com risco travado em $1.00.")
+                        sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                        if sl_data["success"]:
+                            sold_early = True
+                            has_primary = False
+                            early_sell_tx_hash = sl_data["tx_hash"]
+                            early_sell_price = sl_data["price"]
+                            early_sell_payout = sl_data["payout"]
 
                 # --- ADD-ON 2: BTC5MScour Sweeper (Modo Agressivo Moderado: 240s aos 285s) ---
-                if not has_primary and not sold_early and not hedged and not scour_executed and elapsed >= 240:
+                if not has_primary and not sold_early and not hedged and not scour_executed and not scour_attempted and elapsed >= 240:
                     if abs(current_delta) >= SCOUR_DELTA_THRESHOLD:
                         cand_scour_side = "UP" if current_delta > 0 else "DOWN"
                         cand_scour_token = token_up if cand_scour_side == "UP" else token_down
-                        
+
                         # Confirmacao de Convergencia Binance para evitar sweep em oraculo atrasado
                         b_spot = get_binance_spot()
                         b_open = self.binance_opens.get(window_ts, binance_spot)
                         b_drift = (b_spot - b_open) if (b_spot and b_open) else current_delta
                         binance_ok = (cand_scour_side == "UP" and b_drift >= 5.0) or (cand_scour_side == "DOWN" and b_drift <= -5.0)
-                        
+
                         # Validacao de CVD Tick Data no Sweeper: Rejeita se houver agressao institucional contraria violenta
                         cvd_net = 0.0
                         cvd_sig = "NEUTRAL"
@@ -1133,23 +1297,41 @@ class LiveTrader:
                             # Faixa de Risco/Retorno Positivo ($0.50 a $0.82 -> lucro min de +$0.22/dolar)
                             if SCOUR_MIN_PRICE <= cand_price <= SCOUR_MAX_PRICE:
                                 cur_bal = self.get_usdc_balance()
-                                if cur_bal >= FIXED_STAKE:
+                                if cur_bal >= FIXED_STAKE and not self._is_past_deadline(window_ts, 290):
+                                    scour_attempted = True
                                     print(f"\n    [🦅 BTC5MSCOUR SWEEPER DISPARADO!] Aos {elapsed}s: Delta Chainlink de ${current_delta:+.2f} (>= ${SCOUR_DELTA_THRESHOLD:.2f})!")
                                     print(f"       Binance Drift: ${b_drift:+.2f} | CVD Líquido: ${cvd_net/1e6:+.2f}M ({cvd_src}) | CLOB Best Ask: ${cand_price:.2f} ({ask_size:.1f} cotas)")
                                     print(f"       Varrendo com ${FIXED_STAKE:.2f} USDC em {cand_scour_side}...")
-                                    order_limit_p = min(SCOUR_MAX_PRICE + 0.01, round(cand_price + 0.02, 2))
-                                    scour_res = self.place_live_order(cand_scour_token, "BUY", FIXED_STAKE, price=order_limit_p, max_price=SCOUR_MAX_PRICE + 0.01)
+                                    order_limit_p = min(SCOUR_MAX_PRICE, round(cand_price + 0.01, 2))
+                                    scour_res = self.place_live_order(cand_scour_token, "BUY", FIXED_STAKE, price=order_limit_p, max_price=SCOUR_MAX_PRICE)
                                     if scour_res.get("status") == "SUCCESS":
-                                        scour_executed = True
-                                        scour_side = cand_scour_side
-                                        scour_token = cand_scour_token
                                         sc_resp = scour_res.get("response", {})
                                         scour_order_id = sc_resp.get("orderID") or "EXECUTED"
                                         sc_hashes = sc_resp.get("transactionsHashes") or []
                                         scour_tx_hash = sc_hashes[0] if sc_hashes else scour_order_id
                                         scour_price = cand_price
-                                        scour_shares = round(FIXED_STAKE / max(0.01, cand_price), 4)
-                                        print(f"       -> SWEEPER EXECUTADO! Tx: {scour_tx_hash} | {scour_shares} cotas @ ${scour_price:.2f}")
+                                        if self.execution_mode == "paper":
+                                            scour_executed = True
+                                            scour_side = cand_scour_side
+                                            scour_token = cand_scour_token
+                                            scour_shares = round(FIXED_STAKE / max(0.01, cand_price), 4)
+                                            print(f"       -> [MODO PAPER] SWEEPER SIMULADO! Tx: {scour_tx_hash} | {scour_shares:.4f} cotas @ ${scour_price:.2f}")
+                                        else:
+                                            real_sc_tok = 0.0
+                                            for _ in range(3):
+                                                time.sleep(1.5)
+                                                real_sc_tok = self.get_token_balance(cand_scour_token)
+                                                if real_sc_tok > 0:
+                                                    break
+                                            if real_sc_tok > 0:
+                                                scour_executed = True
+                                                scour_side = cand_scour_side
+                                                scour_token = cand_scour_token
+                                                scour_shares = real_sc_tok
+                                                print(f"       -> SWEEPER EXECUTADO! Tx: {scour_tx_hash} | {scour_shares:.4f} cotas reais @ ${scour_price:.2f}")
+                                            else:
+                                                print(f"       [AVISO SWEEPER] Ordem enviada mas cota nao preenchida (FAK). Sweeper desconsiderado.")
+                                                scour_executed = False
                                     else:
                                         print(f"       [Falha no sweeper]: {scour_res.get('error')}")
                             elif cand_price > SCOUR_MAX_PRICE:
@@ -1253,13 +1435,27 @@ class LiveTrader:
             self.session_losses += 1
 
         # Aguarda brevemente para refletir saldo no relayer
-        if total_payout > 0:
+        if total_payout > 0 and self.execution_mode != "paper":
             time.sleep(3.0)
         new_balance = self.get_usdc_balance()
+        if new_balance < 0:
+            new_balance = self.current_balance
 
         # Atualizacao do P&L Real da Sessao e vs Deposito
         self.session_pnl = round(new_balance - self.session_initial_balance, 2)
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
+
+        # Verificacao de paridade contabil carteira Polygon vs Sessao
+        if self.execution_mode != "paper":
+            expected_journal_balance = round(self.session_initial_balance + self.session_pnl, 2)
+            parity_gap = abs(new_balance - expected_journal_balance)
+            if parity_gap > 2.00:
+                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada entre saldo real (${new_balance:.2f}) e diário (${expected_journal_balance:.2f})!")
+                print("       Ajustando saldo de referência para paridade real com a blockchain Polygon...")
+                self.session_initial_balance = new_balance
+                self.session_pnl = 0.0
+
+        self.traded_windows.add(window_ts)
 
         self.recent_winners.append(winner)
         if len(self.recent_winners) > 10:
@@ -1340,9 +1536,10 @@ class LiveTrader:
                 "session_pnl": self.session_pnl,
                 "balance": new_balance
             }
-            
+
             json_data = {
                 "mode": "LIVE_TRADING_V2_CHAINLINK_BONEREAPER_SIRMARTINGALE_SCOUR",
+                "execution_mode": self.execution_mode,
                 "funder": self.funder_address,
                 "session_initial_balance": self.session_initial_balance,
                 "cycles_executed": self.cycles_executed,
@@ -1367,8 +1564,7 @@ class LiveTrader:
                 except Exception:
                     pass
             json_data["trades"].append(trade_entry)
-            with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                json.dump(json_data, f, indent=2)
+            _atomic_json_write(JOURNAL_JSON, json_data)
 
         # 11. Enfileira para Reconciliacao Assincrona oficial (2-3 min apos fechamento da vela)
         if total_stake > 0:
@@ -1392,22 +1588,42 @@ class LiveTrader:
             self.reconciliation_queue.put(reconcile_item)
 
     def start_loop(self):
-        """Loop continuo de negociacao real"""
+        """Loop continuo de negociacao real com lock de instancia e tratamento robusto"""
         print("=" * 65)
-        print("[LIVE V2] POLYMARKET BTC 5M - INICIANDO ENGINE DE NEGOCIACAO REAL")
+        print("[LIVE V2] POLYMARKET BTC 5M - INICIANDO ENGINE DE NEGOCIACAO")
+        print(f"Modo de Execucao: {self.execution_mode.upper()}")
         print(f"Carteira Funder (Proxy): {self.funder_address}")
         print(f"Aposta Fixa: ${FIXED_STAKE:.2f} USDC | Stop Loss: ${MAX_LOSS_LIMIT:.2f} | Take Profit: ${TAKE_PROFIT_LIMIT:.2f}")
         print("=" * 65)
 
-        while not self.is_halted:
-            try:
-                self.run_trading_cycle()
-            except KeyboardInterrupt:
-                print("\n[Robo pausado pelo usuario]")
-                break
-            except Exception as e:
-                print(f"[Erro no ciclo]: {e}")
-                time.sleep(5)
+        lock_path = os.path.join(BASE_DIR, "live_trader.lock")
+        self.lock_file = _acquire_instance_lock(lock_path)
+        print(f"-> Instance Lock adquirido com sucesso: {lock_path}")
+
+        try:
+            while not self.is_halted:
+                try:
+                    self.run_trading_cycle()
+                except KeyboardInterrupt:
+                    print("\n[Robo pausado pelo usuario]")
+                    break
+                except Exception as e:
+                    print(f"[Erro critico no ciclo]: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    time.sleep(5)
+        finally:
+            if self.lock_file:
+                try:
+                    self.lock_file.close()
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+                except Exception:
+                    pass
+            print("-> Instance Lock liberado com sucesso.")
 
         if self.is_halted:
             print(f"\n[OPERACOES ENCERRADAS]: {self.halt_reason}")
