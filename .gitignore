@@ -1,0 +1,68 @@
+# ==========================================
+# CRITICAL SECURITY - NEVER COMMIT SENSITIVE KEYS
+# ==========================================
+.env
+*.env
+*.key
+*.pem
+*.secret
+
+# ==========================================
+# Python Runtime & Caches
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# ==========================================
+# Heavy Historical Datasets & Dumps (>100MB)
+# ==========================================
+*.csv
+!live_trading_journal.csv
+*.csv.bak
+*.json.bak
+*.zip
+*.tar.gz
+*.parquet
+
+# Heavy JSON Caches and Scraped Dumps
+latest_*.json
+btc_*_cache.json
+sources.json
+prr_token.json
+
+# Dataset Subdirectories
+kachoio_crypto_5m/
+kaggle_dataset/
+PolyResearch_Crypto_Sample/
+stockfries_hedgefund_13fdata_byStockPosition_2018to2026/
+
+# ==========================================
+# Logs & System Files
+# ==========================================
+*.log
+.DS_Store
+Thumbs.db
+.publish-state.json
+.kaggle-uploaded
