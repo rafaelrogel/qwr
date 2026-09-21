@@ -56,16 +56,19 @@ ENV_PATH = os.path.join(BASE_DIR, ".env")
 JOURNAL_CSV = os.path.join(BASE_DIR, "live_trading_journal.csv")
 JOURNAL_JSON = os.path.join(BASE_DIR, "live_trading_journal.json")
 
-# Configuracoes de Risco e Add-ons Quantitativos
+# Configuracoes de Risco e Estrategia Quantitativa (Modo Sniper Purista - Holdout WR 74.4%)
 FIXED_STAKE = 1.00        # $1.00 USDC por aposta primaria
+PRIMARY_MIN_PRICE = 0.35  # Preco minimo de cota primaria (evita penny traps)
+PRIMARY_MAX_PRICE = 0.62  # Preco maximo de cota primaria (Audit PIT: fill <= 0.62 garante breakeven < 60%)
 HEDGE_STAKE = 1.00        # $1.00 USDC para hedge dinamico estilo Bonereaper (min size Polymarket CLOB)
 HEDGE_DELTA_THRESHOLD = 8.0  # Reversao de $8 no Chainlink aciona protecao antecipada de hedge
 HEDGE_MAX_PRICE = 0.45     # Preco maximo permitido para hedge (<= $0.45 garante retorno positivo se hedged)
 STOP_LOSS_MIN_BID = 0.15   # Preco minimo de bid para liquidar posicao perdedora antecipadamente (Stop-Loss)
 TAKE_PROFIT_PRICE_THRESHOLD = 0.86 # Add-on 1 (SirMartingale): Venda antecipada se cotacao bater $0.86+ (lucro ~80%)
-SCOUR_DELTA_THRESHOLD = 25.0 # Add-on 2 (BTC5MScour): Delta minimo a partir dos 240s para varrer conviccao ($25 de margem)
+SCOUR_ENABLED = False     # Sweeper desativado (Audit Backtest provou EV negativo de -1.8c/$)
+SCOUR_DELTA_THRESHOLD = 25.0 # Delta minimo para Sweeper (se habilitado)
 SCOUR_MIN_PRICE = 0.50       # Preco minimo de cota para o Sweeper
-SCOUR_MAX_PRICE = 0.75       # Preco maximo de cota para o Sweeper (limite de $0.75 garante min +33% de lucro por dolar)
+SCOUR_MAX_PRICE = 0.75       # Preco maximo de cota para o Sweeper
 MAX_LOSS_LIMIT = -5.00    # Stop loss diario (-$5.00 USDC)
 TAKE_PROFIT_LIMIT = 50.00 # Take profit aumentado para +$50.00 USDC
 
@@ -916,39 +919,16 @@ class LiveTrader:
             time.sleep(20)
             return
 
-        # Estrategia Quantitativa orientada pela Chainlink
-        is_ddd = check_ddd_completed_candles()
-        
+        # Estrategia Quantitativa Sniper Purista (Audit Holdout WR 74.4% | Breakeven 57.9%)
+        # DDD e Streak Snapper desativados para nao forcar entradas em ruido (WR marginal 64%)
         target_side = "UP"
         target_token = token_up
         estimated_price = price_up
         rationale = ""
         should_trade_primary = False
-
-        # Verificação do Gatilho Streak Snapper (Moon Dev 3x ATR)
-        streak_signal = get_streak_snapper_signal(min_atr_mult=3.0)
         is_streak_snapper = False
 
-        if streak_signal:
-            rev_side = streak_signal["reversal_side"]
-            s_dir = streak_signal["streak_dir"]
-            cum_m = streak_signal["cum_move"]
-            atr_r = streak_signal["atr_ratio"]
-            print(f"\n    [🔄 GATILHO STREAK SNAPPER ATIVADO]: 4x {s_dir} seguidos! Esticamento: ${cum_m:.2f} ({atr_r:.1f}x ATR).")
-            print(f"       -> Alvo de Reversão Estatística: {rev_side}")
-            target_side = rev_side
-            target_token = token_up if rev_side == "UP" else token_down
-            estimated_price = price_up if rev_side == "UP" else price_down
-            rationale = f"Streak Snapper (4x {s_dir} + Esticamento {atr_r:.1f}x ATR -> Reversao {rev_side})"
-            should_trade_primary = True
-            is_streak_snapper = True
-        elif is_ddd and delta > -10.0:
-            target_side = "UP"
-            target_token = token_up
-            estimated_price = price_up
-            rationale = "Gatilho de Reversao Markoviana (3 baixas anteriores DDD) + Chainlink defendendo strike"
-            should_trade_primary = True
-        elif delta >= 15.0:
+        if delta >= 15.0:
             target_side = "UP"
             target_token = token_up
             estimated_price = price_up
@@ -1045,16 +1025,13 @@ class LiveTrader:
                 except Exception:
                     pass
 
-            # REGRA 2: Filtro de Faixa de Preco Saudavel ($0.35 a $0.65)
+            # REGRA 2: Filtro de Faixa de Preco Sniper Purista ($0.35 a $0.62)
             if should_trade_primary:
-                if is_streak_snapper and estimated_price > 0.52:
-                    print(f"    [🛡️ FILTRO STREAK SNAPPER]: Preco ${estimated_price:.2f} > $0.52. Pulando entrada para preservar edge estatistico.")
+                if estimated_price < PRIMARY_MIN_PRICE:
+                    print(f"    [🛡️ FILTRO DE PRECO]: Preco ${estimated_price:.2f} < ${PRIMARY_MIN_PRICE:.2f} (Penny Trap). Pulando entrada primaria.")
                     should_trade_primary = False
-                elif estimated_price < 0.35:
-                    print(f"    [🛡️ FILTRO DE PRECO]: Preco ${estimated_price:.2f} < $0.35 (Penny Trap). Pulando entrada primaria.")
-                    should_trade_primary = False
-                elif estimated_price > 0.65:
-                    print(f"    [🛡️ FILTRO DE PRECO]: Preco ${estimated_price:.2f} > $0.65 (Risco Assimetrico). Pulando entrada primaria.")
+                elif estimated_price > PRIMARY_MAX_PRICE:
+                    print(f"    [🛡️ FILTRO DE PRECO SNIPER]: Preco ${estimated_price:.2f} > ${PRIMARY_MAX_PRICE:.2f} (Breakeven desfavoravel > 60%). Pulando entrada primaria.")
                     should_trade_primary = False
 
             # REGRA 3: Filtro de Liquidações Binance Futures (Order Flow Convicção / Anti-Trap)
@@ -1153,8 +1130,10 @@ class LiveTrader:
         scour_price = 0.0
         payout_scour = 0.0
         last_candle_chainlink = spot_eval
-
-        print(f"\n    [🛡️ MULTI-ADDON MONITOR]: Monitorando SirMartingale (TP >= 0.86), Bonereaper (Hedge) e BTC5MScour (Sweeper)...")
+        monitor_addons = ["SirMartingale (TP >= 0.86)", "Bonereaper (Hedge <= 0.45)", "Stop-Loss"]
+        if SCOUR_ENABLED:
+            monitor_addons.append("BTC5MScour (Sweeper)")
+        print(f"\n    [🎯 SNIPER PURISTA MONITOR]: Monitorando {' | '.join(monitor_addons)}...")
         while True:
             now_loop = int(time.time())
             elapsed = now_loop - window_ts
@@ -1282,8 +1261,8 @@ class LiveTrader:
                             early_sell_price = sl_data["price"]
                             early_sell_payout = sl_data["payout"]
 
-                # --- ADD-ON 2: BTC5MScour Sweeper (Modo Agressivo Moderado: 240s aos 285s) ---
-                if not has_primary and not sold_early and not hedged and not scour_executed and not scour_attempted and elapsed >= 240:
+                # --- ADD-ON 2: BTC5MScour Sweeper (Desativado em modo Sniper Purista - EV negativo) ---
+                if SCOUR_ENABLED and not has_primary and not sold_early and not hedged and not scour_executed and not scour_attempted and elapsed >= 240:
                     if abs(current_delta) >= SCOUR_DELTA_THRESHOLD:
                         cand_scour_side = "UP" if current_delta > 0 else "DOWN"
                         cand_scour_token = token_up if cand_scour_side == "UP" else token_down

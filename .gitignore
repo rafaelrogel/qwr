@@ -62,6 +62,7 @@ stockfries_hedgefund_13fdata_byStockPosition_2018to2026/
 # Logs & System Files
 # ==========================================
 *.log
+*.lock
 .DS_Store
 Thumbs.db
 .publish-state.json
