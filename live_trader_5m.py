@@ -60,12 +60,12 @@ JOURNAL_JSON = os.path.join(BASE_DIR, "live_trading_journal.json")
 FIXED_STAKE = 1.00        # $1.00 USDC por aposta primaria
 HEDGE_STAKE = 1.00        # $1.00 USDC para hedge dinamico estilo Bonereaper (min size Polymarket CLOB)
 HEDGE_DELTA_THRESHOLD = 8.0  # Reversao de $8 no Chainlink aciona protecao antecipada de hedge
-HEDGE_MAX_PRICE = 0.50     # Preco maximo permitido para hedge (acima de $0.50 garante perda matematica total)
+HEDGE_MAX_PRICE = 0.45     # Preco maximo permitido para hedge (<= $0.45 garante retorno positivo se hedged)
 STOP_LOSS_MIN_BID = 0.15   # Preco minimo de bid para liquidar posicao perdedora antecipadamente (Stop-Loss)
 TAKE_PROFIT_PRICE_THRESHOLD = 0.86 # Add-on 1 (SirMartingale): Venda antecipada se cotacao bater $0.86+ (lucro ~80%)
 SCOUR_DELTA_THRESHOLD = 25.0 # Add-on 2 (BTC5MScour): Delta minimo a partir dos 240s para varrer conviccao ($25 de margem)
 SCOUR_MIN_PRICE = 0.50       # Preco minimo de cota para o Sweeper
-SCOUR_MAX_PRICE = 0.82       # Preco maximo de cota para o Sweeper (evita pagar $0.90+ para ganhar centavos)
+SCOUR_MAX_PRICE = 0.75       # Preco maximo de cota para o Sweeper (limite de $0.75 garante min +33% de lucro por dolar)
 MAX_LOSS_LIMIT = -5.00    # Stop loss diario (-$5.00 USDC)
 TAKE_PROFIT_LIMIT = 50.00 # Take profit aumentado para +$50.00 USDC
 
@@ -157,6 +157,8 @@ def get_chainlink_price() -> Optional[float]:
     """
     rpcs = [
         "https://1rpc.io/matic",
+        "https://polygon-rpc.com",
+        "https://rpc.ankr.com/polygon",
         "https://polygon-bor-rpc.publicnode.com",
         "https://polygon.llamarpc.com"
     ]
@@ -321,6 +323,25 @@ def get_streak_snapper_signal(min_atr_mult: float = 3.0) -> Optional[Dict[str, A
     except Exception:
         pass
     return None
+
+def check_ddd_completed_candles() -> bool:
+    """
+    Verifica se as ultimas 3 velas completas de 5m fecharam em queda (DOWN, DOWN, DOWN)
+    a partir de klines reais da Binance (Audit 2.6).
+    Evita depender de snapshots locais provisorios em memoria.
+    """
+    url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=5"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "PolymarketBot/2.0"})
+        with urllib.request.urlopen(req, timeout=3.5) as r:
+            klines = json.loads(r.read().decode())
+            if not klines or len(klines) < 4:
+                return False
+            completed = klines[:-1]  # exclui a vela em andamento
+            last_3 = completed[-3:]
+            return all(float(k[4]) < float(k[1]) for k in last_3)
+    except Exception:
+        return False
 
 def get_polymarket_resolution(window_ts: int, max_retries: int = 15) -> Optional[str]:
     """
@@ -896,7 +917,7 @@ class LiveTrader:
             return
 
         # Estrategia Quantitativa orientada pela Chainlink
-        is_ddd = len(self.recent_winners) >= 3 and self.recent_winners[-3:] == ["DOWN", "DOWN", "DOWN"]
+        is_ddd = check_ddd_completed_candles()
         
         target_side = "UP"
         target_token = token_up
@@ -1009,15 +1030,20 @@ class LiveTrader:
                     if 0.01 <= microprice <= 0.99:
                         estimated_price = round(microprice, 2)
                         print(f"       -> Microprice Ponderado adotado para execução: ${estimated_price:.2f}")
+            else:
+                # REGRA NO BOOK, NO TRADE (Audit 2.8): Sem Order Book L2 confirmado, nao opera
+                print(f"\n    [🛡️ NO BOOK, NO TRADE (Audit 2.8)]: Impossível obter Order Book L2 via CLOB.")
+                print("       -> Preservando capital! Entrada primária cancelada por ausência de profundidade confirmada.")
+                should_trade_primary = False
 
-            # Consulta preco real de execucao no livro CLOB
-            try:
-                real_book_price = self.client.calculate_market_price(target_token, "BUY", FIXED_STAKE, OrderType.FAK)
-                if real_book_price and real_book_price > 0:
-                    if not ob_metrics:
+            # Consulta preco real de execucao no livro CLOB se ainda elegivel
+            if should_trade_primary:
+                try:
+                    real_book_price = self.client.calculate_market_price(target_token, "BUY", FIXED_STAKE, OrderType.FAK)
+                    if real_book_price and real_book_price > 0:
                         estimated_price = real_book_price
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
             # REGRA 2: Filtro de Faixa de Preco Saudavel ($0.35 a $0.65)
             if should_trade_primary:

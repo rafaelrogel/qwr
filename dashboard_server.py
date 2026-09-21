@@ -18,13 +18,6 @@ import threading
 import time
 from datetime import datetime
 from typing import Dict, Any, List
-
-from py_clob_client_v2 import (
-    ClobClient,
-    SignatureTypeV2,
-    BalanceAllowanceParams,
-    AssetType
-)
 from btc_5m_engine import BTC5mEngine
 
 PORT = 8080
@@ -58,40 +51,22 @@ def load_env_config() -> Dict[str, str]:
     return cfg
 
 ENV_CFG = load_env_config()
-PRIV_KEY = ENV_CFG.get("POLYGON_PRIVATE_KEY", "").strip()
-if PRIV_KEY.startswith("0x"):
-    PRIV_KEY = PRIV_KEY[2:]
 FUNDER_ADDR = ENV_CFG.get("POLY_FUNDER_ADDRESS", "").strip()
 ACCOUNT_STATE["funder_address"] = FUNDER_ADDR
 
-clob_client = None
-if PRIV_KEY and FUNDER_ADDR:
-    try:
-        clob_client = ClobClient(
-            host="https://clob.polymarket.com",
-            key=PRIV_KEY,
-            chain_id=137,
-            signature_type=SignatureTypeV2.POLY_1271,
-            funder=FUNDER_ADDR
-        )
-        creds = clob_client.derive_api_key()
-        clob_client.set_api_creds(creds)
-    except Exception as e:
-        print(f"[Aviso CLOB Client]: {e}")
-        clob_client = None
-
 def balance_polling_worker():
-    """Atualiza o saldo real em USDC via CLOB API em segundo plano"""
-    global ACCOUNT_STATE, clob_client
+    """Atualiza o saldo real em USDC a partir do diário atualizado pelo motor em segundo plano"""
+    global ACCOUNT_STATE
     while True:
-        if clob_client:
+        if os.path.exists(JOURNAL_JSON):
             try:
-                params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
-                info = clob_client.get_balance_allowance(params)
-                raw_bal = float(info.get("balance", 0.0))
-                ACCOUNT_STATE["current_balance"] = round(raw_bal / 1e6, 4)
-                ACCOUNT_STATE["last_balance_update"] = time.time()
-                ACCOUNT_STATE["status"] = "CONECTADO"
+                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    jdata = json.load(f)
+                    bal = float(jdata.get("current_balance", 0.0))
+                    if bal > 0:
+                        ACCOUNT_STATE["current_balance"] = bal
+                    ACCOUNT_STATE["last_balance_update"] = time.time()
+                    ACCOUNT_STATE["status"] = "SINCRONIZADO"
             except Exception as e:
                 ACCOUNT_STATE["status"] = f"Aviso: {e}"
         time.sleep(3.0)
@@ -1094,7 +1069,7 @@ def run_server():
     print(f"-> Carteira Funder: {FUNDER_ADDR}")
     print("=" * 65)
     
-    server = socketserver.TCPServer(("", PORT), SimplifiedDashboardHandler)
+    server = socketserver.TCPServer(("127.0.0.1", PORT), SimplifiedDashboardHandler)
     server.serve_forever()
 
 if __name__ == "__main__":

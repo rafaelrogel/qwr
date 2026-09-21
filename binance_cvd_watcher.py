@@ -130,7 +130,23 @@ class BinanceCVDWatcher:
                 sell_usd += vol
 
         # Se temos dados suficientes de ticks em tempo real
-        if tick_count >= 50:
+        now = time.time()
+        is_stale = (now - self.last_tick_time) > 30.0 if self.last_tick_time > 0 else True
+
+        if is_stale and self.last_tick_time > 0:
+            # Audit 2.12: Websocket parou de receber ticks por >30s - forca NEUTRAL
+            return {
+                "taker_buy_usd": round(buy_usd, 2),
+                "taker_sell_usd": round(sell_usd, 2),
+                "net_cvd_usd": 0.0,
+                "cvd_ratio": 0.50,
+                "dominant_signal": "NEUTRAL",
+                "ticks": tick_count,
+                "source": "STALE_TICKS_NEUTRAL",
+                "connected": False
+            }
+
+        if tick_count >= 50 and not is_stale:
             net_cvd = buy_usd - sell_usd
             total_vol = buy_usd + sell_usd
             ratio = (buy_usd / total_vol) if total_vol > 0 else 0.50
@@ -150,7 +166,7 @@ class BinanceCVDWatcher:
                 "dominant_signal": dominant,
                 "ticks": tick_count,
                 "source": "WEBSOCKET_TICKS",
-                "connected": self.connected
+                "connected": self.connected and not is_stale
             }
 
         # Fallback REST: calcular CVD a partir das klines de 1m mais recentes da Binance Futures

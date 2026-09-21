@@ -84,6 +84,8 @@ class BTC5mEngine:
         """Busca cotacao oficial do Oraculo Chainlink BTC/USD na Polygon (AggregatorV3 0xc907E116054Ad103354f2D350FD2514433D57F6f)"""
         rpcs = [
             "https://1rpc.io/matic",
+            "https://polygon-rpc.com",
+            "https://rpc.ankr.com/polygon",
             "https://polygon-bor-rpc.publicnode.com",
             "https://polygon.llamarpc.com"
         ]
