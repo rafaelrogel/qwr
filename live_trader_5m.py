@@ -928,21 +928,21 @@ class LiveTrader:
         should_trade_primary = False
         is_streak_snapper = False
 
-        if delta >= 15.0:
+        if delta >= 18.0:
             target_side = "UP"
             target_token = token_up
             estimated_price = price_up
             rationale = f"Drift Positivo Chainlink (+${delta:.1f} acima do strike)"
             should_trade_primary = True
-        elif delta <= -15.0:
+        elif delta <= -18.0:
             target_side = "DOWN"
             target_token = token_down
             estimated_price = price_down
             rationale = f"Drift Negativo Chainlink (-${abs(delta):.1f} abaixo do strike)"
             should_trade_primary = True
         else:
-            # REGRA 1 (Deadband): Ruido (|Delta| < $15.00). Nao forcar aposta primaria no meio do caminho!
-            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND]: Delta de ${delta:+.2f} esta dentro da zona morta (< $15.00).")
+            # REGRA 1 (Deadband): Ruido (|Delta| < $18.00). Nao forcar aposta primaria no meio do caminho!
+            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND]: Delta de ${delta:+.2f} esta dentro da zona morta (< $18.00).")
             print("       -> Preservando capital! Nenhuma aposta primaria forcada no ruido.")
             should_trade_primary = False
 
@@ -978,6 +978,7 @@ class LiveTrader:
         shares = 0.0
         order_id = "SKIPPED"
         tx_hash = ""
+        entry_delta = delta
 
         if should_trade_primary:
             # 6.1 MICROESTRUTURA CLOB: Spread, Imbalance e Microprice (PolyResearch Robotics)
@@ -1145,13 +1146,23 @@ class LiveTrader:
                 last_candle_chainlink = current_chainlink
                 current_delta = current_chainlink - strike
 
-                # --- ADD-ON 1: SirMartingale (Take-profit antecipado se cotacao bater >= 0.86) ---
-                if has_primary and not sold_early and elapsed >= 170:
+                # --- ADD-ON 1: SirMartingale (Take-Profit Dinâmico Escalonado) ---
+                if has_primary and not sold_early and elapsed >= 165:
                     ob_tp = get_clob_orderbook(target_token)
                     if ob_tp:
                         cur_bid = ob_tp["best_bid"]
                         bid_size = ob_tp["top_bid_size"]
+                        # 1. Alvo padrão: 0.86 ou 1.30x entrada
                         min_tp_price = max(TAKE_PROFIT_PRICE_THRESHOLD, round(estimated_price * 1.30, 3))
+
+                        # 2. Se entrada barata (<= $0.52), meta de +40% já garante excelente realização
+                        if estimated_price <= 0.52:
+                            min_tp_price = min(min_tp_price, max(0.72, round(estimated_price * 1.40, 2)))
+
+                        # 3. Se tempo avançado (elapsed >= 225s), garante lucro sólido antes dos segundos finais
+                        if elapsed >= 225 and cur_bid >= 0.78 and cur_bid >= round(estimated_price * 1.25, 2):
+                            min_tp_price = min(min_tp_price, cur_bid)
+
                         if cur_bid >= min_tp_price and bid_size >= 1.0:
                             print(f"\n    [💰 SIRMARTINGALE TAKE-PROFIT!] Aos {elapsed}s: CLOB Best Bid atingiu ${cur_bid:.2f} (>= ${min_tp_price:.2f}, entrada: ${estimated_price:.2f})!")
                             real_tok = self.get_token_balance(target_token) if self.execution_mode != "paper" else shares
@@ -1173,18 +1184,40 @@ class LiveTrader:
                             else:
                                 print(f"       [Falha na venda antecipada]: {sell_res.get('error') if sell_res else 'Saldo insuficiente ou deadline excedido'}")
 
-                # --- DEFESA: Bonereaper Hedge Dinamico (reversao no Chainlink ou confirmacao na Binance) ---
+                # --- DEFESA: Bonereaper Hedge Dinamico e Evaporação de Drift ---
                 reversal = False
+                evaporation = False
                 if has_primary and not sold_early:
                     cur_b_spot = get_binance_spot() or current_chainlink
                     b_open = self.binance_opens.get(window_ts, strike)
                     b_drift = (cur_b_spot - b_open) if (cur_b_spot and b_open) else current_delta
+                    
+                    # 1. Reversão contra o strike
                     if target_side == "UP":
                         if current_delta <= -HEDGE_DELTA_THRESHOLD or (current_delta < -2.0 and b_drift < -5.0):
                             reversal = True
                     elif target_side == "DOWN":
                         if current_delta >= HEDGE_DELTA_THRESHOLD or (current_delta > 2.0 and b_drift > 5.0):
                             reversal = True
+
+                    # 2. Evaporação de Drift (Lição Ciclo 116: perda de >85% da borda inicial)
+                    if not reversal and elapsed >= 180 and abs(entry_delta) >= 25.0:
+                        if target_side == "UP" and current_delta <= 2.50:
+                            evaporation = True
+                        elif target_side == "DOWN" and current_delta >= -2.50:
+                            evaporation = True
+
+                # Trata evaporação de borda preventivamente via Stop-Loss
+                if evaporation and not sold_early and not hedged:
+                    print(f"\n    [⚠️ EVAPORAÇÃO DE DRIFT DETECTADA!] Aos {elapsed}s:")
+                    print(f"       Delta inicial foi ${entry_delta:+.2f}, mas desabou para ${current_delta:+.2f} (perda de margem de segurança).")
+                    sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                    if sl_data["success"]:
+                        sold_early = True
+                        has_primary = False
+                        early_sell_tx_hash = sl_data["tx_hash"]
+                        early_sell_price = sl_data["price"]
+                        early_sell_payout = sl_data["payout"]
 
                 if reversal and not hedged and not hedge_attempted:
                     hedge_attempted = True
