@@ -158,13 +158,16 @@ def get_chainlink_price() -> Optional[float]:
     diretamente no contrato AggregatorV3 da Polygon (0xc907E116054Ad103354f2D350FD2514433D57F6f)
     usando eth_call (latestRoundData selector 0xfeaf968c). Zero gas e sub-segundo.
     """
+    cfg = load_env_config()
+    custom_rpc = cfg.get("POLYGON_RPC_URL") or cfg.get("RPC_URL")
     rpcs = [
-        "https://1rpc.io/matic",
-        "https://polygon-rpc.com",
-        "https://rpc.ankr.com/polygon",
-        "https://polygon-bor-rpc.publicnode.com",
-        "https://polygon.llamarpc.com"
+        "https://polygon.drpc.org",
+        "https://gateway.tenderly.co/public/polygon",
+        "https://polygon.publicnode.com",
+        "https://polygon-bor.publicnode.com"
     ]
+    if custom_rpc and custom_rpc not in rpcs:
+        rpcs.insert(0, custom_rpc)
     payload = json.dumps({
         "jsonrpc": "2.0",
         "method": "eth_call",
