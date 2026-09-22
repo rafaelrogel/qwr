@@ -758,19 +758,30 @@ class LiveTrader:
                 print(f"       Vendendo {sell_shares:.2f} cotas de {target_side} a mercado para resgatar caixa...")
                 sl_res = self.place_live_order(target_token, "SELL", sell_shares, price=best_bid_primary)
                 if sl_res and sl_res.get("status") == "SUCCESS":
-                    s_resp = sl_res.get("response", {})
-                    s_hashes = s_resp.get("transactionsHashes") or []
-                    early_tx = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
-                    early_payout = round(sell_shares * best_bid_primary, 2)
-                    print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_tx}")
-                    print(f"       -> Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
-                    return {
-                        "success": True,
-                        "tx_hash": early_tx,
-                        "price": best_bid_primary,
-                        "payout": early_payout,
-                        "shares": sell_shares
-                    }
+                    sl_confirmed = True
+                    if self.execution_mode != "paper":
+                        time.sleep(1.5)
+                        rem_tok = self.get_token_balance(target_token)
+                        if rem_tok >= sell_shares:
+                            print(f"       [ALERTA STOP-LOSS] Ordem aceita pela API mas cotas continuam na carteira ({rem_tok:.2f} cotas). FAK não preenchido.")
+                            sl_confirmed = False
+
+                    if sl_confirmed:
+                        s_resp = sl_res.get("response", {})
+                        s_hashes = s_resp.get("transactionsHashes") or []
+                        early_tx = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
+                        early_payout = round(sell_shares * best_bid_primary, 2)
+                        print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_tx}")
+                        print(f"       -> Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
+                        return {
+                            "success": True,
+                            "tx_hash": early_tx,
+                            "price": best_bid_primary,
+                            "payout": early_payout,
+                            "shares": sell_shares
+                        }
+                    else:
+                        print("       -> Stop-loss não consumado no livro. Posição mantida aberta para próxima tentativa.")
                 else:
                     print(f"       [Falha no stop-loss]: {sl_res.get('error') if sl_res else 'Erro desconhecido'}")
         else:
@@ -881,7 +892,7 @@ class LiveTrader:
         if window_ts in self.binance_opens:
             binance_open = self.binance_opens[window_ts]
         else:
-            binance_open = get_binance_spot() or strike
+            binance_open = get_candle_open(window_ts) or get_binance_spot() or strike
             if binance_open:
                 self.binance_opens[window_ts] = binance_open
 
@@ -1073,8 +1084,8 @@ class LiveTrader:
             print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice): ${estimated_price:.2f}")
             print(f"       Racional: {rationale}")
             print(f"       Enviando ordem de ${FIXED_STAKE:.2f} USDC para a CLOB V2...")
-            limit_p = min(0.66, round(estimated_price + 0.01, 2))
-            order_res = self.place_live_order(target_token, "BUY", FIXED_STAKE, price=limit_p, max_price=0.66)
+            limit_p = min(PRIMARY_MAX_PRICE, round(estimated_price + 0.01, 2))
+            order_res = self.place_live_order(target_token, "BUY", FIXED_STAKE, price=limit_p, max_price=PRIMARY_MAX_PRICE)
             print(f"       Resultado do Envio Primário: {order_res.get('status')}")
             if order_res.get("status") == "SUCCESS":
                 resp_data = order_res.get("response", {})
@@ -1088,11 +1099,18 @@ class LiveTrader:
                     print(f"       -> [MODO PAPER] ORDEM PRIMÁRIA SIMULADA! ID: {order_id} | {shares:.4f} cotas @ ${estimated_price:.2f}")
                 else:
                     real_tok_bal = 0.0
-                    for _attempt in range(3):
+                    for _attempt in range(6):
                         time.sleep(1.5)
                         real_tok_bal = self.get_token_balance(target_token)
                         if real_tok_bal > 0:
                             break
+                    if real_tok_bal == 0 and order_id and order_id != "EXECUTED":
+                        try:
+                            ord_info = self.client.get_order(order_id)
+                            if ord_info and float(ord_info.get("size_matched", 0)) > 0:
+                                real_tok_bal = float(ord_info.get("size_matched", 0))
+                        except Exception:
+                            pass
                     if real_tok_bal > 0:
                         has_primary = True
                         shares = real_tok_bal
@@ -1176,14 +1194,25 @@ class LiveTrader:
                                 print(f"       Vendendo {sell_shares:.2f} cotas na CLOB para travar lucro garantido (~+{((cur_bid/max(0.01, estimated_price)-1)*100):.0f}%)...")
                                 sell_res = self.place_live_order(target_token, "SELL", sell_shares, price=cur_bid)
                             if sell_res and sell_res.get("status") == "SUCCESS":
-                                sold_early = True
-                                has_primary = False
-                                s_resp = sell_res.get("response", {})
-                                s_hashes = s_resp.get("transactionsHashes") or []
-                                early_sell_tx_hash = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
-                                early_sell_price = cur_bid
-                                early_sell_payout = round(sell_shares * cur_bid, 2)
-                                print(f"       -> VENDA ANTECIPADA EXECUTADA! Tx: {early_sell_tx_hash} | Payout Travado: ${early_sell_payout:.2f} USDC")
+                                sell_confirmed = True
+                                if self.execution_mode != "paper":
+                                    time.sleep(1.5)
+                                    rem_tok = self.get_token_balance(target_token)
+                                    if rem_tok >= sell_shares:
+                                        print(f"       [ALERTA TAKE-PROFIT] Ordem aceita pela API mas cotas continuam na carteira ({rem_tok:.2f} cotas). FAK não preenchido.")
+                                        sell_confirmed = False
+
+                                if sell_confirmed:
+                                    sold_early = True
+                                    has_primary = False
+                                    s_resp = sell_res.get("response", {})
+                                    s_hashes = s_resp.get("transactionsHashes") or []
+                                    early_sell_tx_hash = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
+                                    early_sell_price = cur_bid
+                                    early_sell_payout = round(sell_shares * cur_bid, 2)
+                                    print(f"       -> VENDA ANTECIPADA EXECUTADA! Tx: {early_sell_tx_hash} | Payout Travado: ${early_sell_payout:.2f} USDC")
+                                else:
+                                    print("       -> Venda antecipada não consumada no livro. Posição mantida aberta para próxima tentativa.")
                             else:
                                 print(f"       [Falha na venda antecipada]: {sell_res.get('error') if sell_res else 'Saldo insuficiente ou deadline excedido'}")
 
@@ -1486,15 +1515,13 @@ class LiveTrader:
         self.session_pnl = round(new_balance - self.session_initial_balance, 2)
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
 
-        # Verificacao de paridade contabil carteira Polygon vs Sessao
+        # Verificacao de paridade contabil carteira Polygon vs Sessao (sem reset forçado)
         if self.execution_mode != "paper":
             expected_journal_balance = round(self.session_initial_balance + self.session_pnl, 2)
             parity_gap = abs(new_balance - expected_journal_balance)
             if parity_gap > 2.00:
-                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada entre saldo real (${new_balance:.2f}) e diário (${expected_journal_balance:.2f})!")
-                print("       Ajustando saldo de referência para paridade real com a blockchain Polygon...")
-                self.session_initial_balance = new_balance
-                self.session_pnl = 0.0
+                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada entre saldo real (${new_balance:.2f}) e diário (${expected_journal_balance:.2f}).")
+                print("       Preservando contabilidade real da sessão e Circuit Breakers (sem reset forçado).")
 
         self.traded_windows.add(window_ts)
 
