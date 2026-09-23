@@ -1,0 +1,53 @@
+{
+  "mode": "PAPER_SIMULATION_SOL_5M",
+  "current_balance": 29.6506,
+  "total_trades": 3,
+  "wins": 3,
+  "losses": 0,
+  "win_rate": 100.0,
+  "trades": [
+    {
+      "cycle_ts": 1790179200,
+      "time_str": "16:00:00",
+      "strike": 113.86,
+      "final_spot": 114.27,
+      "target_side": "UP",
+      "entry_price": 0.251,
+      "shares": 3.9841,
+      "winner": "UP",
+      "result": "VIT\u00d3RIA",
+      "sold_early": false,
+      "payout": 3.9841,
+      "pnl": 2.9841,
+      "balance": 27.9841
+    },
+    {
+      "cycle_ts": 1790183400,
+      "time_str": "17:10:00",
+      "strike": 113.89,
+      "target_side": "DOWN",
+      "entry_price": 0.4509,
+      "shares": 2.2178,
+      "result": "VIT\u00d3RIA (TAKE-PROFIT)",
+      "sold_early": true,
+      "sell_price": 0.94,
+      "payout": 2.0847,
+      "pnl": 1.0847,
+      "balance": 29.0688
+    },
+    {
+      "cycle_ts": 1790191200,
+      "time_str": "19:20:00",
+      "strike": 114.28,
+      "target_side": "UP",
+      "entry_price": 0.55,
+      "shares": 1.8182,
+      "result": "VIT\u00d3RIA (TAKE-PROFIT)",
+      "sold_early": true,
+      "sell_price": 0.87,
+      "payout": 1.5818,
+      "pnl": 0.5818,
+      "balance": 29.6506
+    }
+  ]
+}

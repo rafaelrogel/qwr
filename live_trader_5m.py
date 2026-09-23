@@ -60,7 +60,7 @@ JOURNAL_JSON = os.path.join(BASE_DIR, "live_trading_journal.json")
 # Configuracoes de Risco e Estrategia Quantitativa (Modo Sniper Purista - Holdout WR 74.4%)
 FIXED_STAKE = 1.00        # $1.00 USDC por aposta primaria
 PRIMARY_MIN_PRICE = 0.35  # Preco minimo de cota primaria (evita penny traps)
-PRIMARY_MAX_PRICE = 0.60  # Preco maximo de cota primaria (Audit 2026: teto estrito protege EV, breakeven <= 60%)
+PRIMARY_MAX_PRICE = 0.55  # Preco maximo de cota primaria (Audit Jev: teto estrito <= 0.55 elimina trades de baixo retorno e eleva EV para +$0.421)
 DEADBAND_BPS = 0.00021    # 2.1 bps (0.021%) do Strike (Deadband dinâmico e scale-invariant independente do preço do BTC)
 DEADBAND_MIN_FLOOR = 15.0 # Piso mínimo absoluto em USD para evitar micro-ruído
 HEDGE_STAKE = 1.00        # $1.00 USDC para hedge dinamico estilo Bonereaper (min size Polymarket CLOB)
@@ -993,7 +993,7 @@ class LiveTrader:
                     print(f"    [🛡️ FILTRO DE PRECO]: Preco ${estimated_price:.2f} < ${PRIMARY_MIN_PRICE:.2f} (Penny Trap). Pulando entrada primaria.")
                     should_trade_primary = False
                 elif estimated_price > PRIMARY_MAX_PRICE:
-                    print(f"    [🛡️ FILTRO DE PRECO SNIPER]: Preco ${estimated_price:.2f} > ${PRIMARY_MAX_PRICE:.2f} (Breakeven desfavoravel > 60%). Pulando entrada primaria.")
+                    print(f"    [🛡️ FILTRO DE PRECO SNIPER]: Preco ${estimated_price:.2f} > ${PRIMARY_MAX_PRICE:.2f} (Breakeven desfavoravel > 55%). Pulando entrada primaria.")
                     should_trade_primary = False
 
             # REGRA 3: Filtro de Liquidações Binance Futures (Order Flow Convicção / Anti-Trap)
@@ -1010,22 +1010,27 @@ class LiveTrader:
                         print(f"       [🔥 ALTA CONVICÇÃO]: Cascata de Liquidação confirmando {target_side} (${liq_stats['total_vol_usd']:,.0f} liquidado)!")
                         rationale += f" + Confirmação de Liquidação ({liq_stats['dominant_signal']})"
 
-            # REGRA 4: Filtro de CVD Tick Data (Anti-Armadilha de Absorção Institucional)
+            # REGRA 4: Filtro de CVD Tick Data (Anti-Armadilha de Absorção Institucional e Taker Divergence)
             if should_trade_primary and not is_streak_snapper:
                 cvd_stats = self.cvd_watcher.get_window_cvd(window_seconds=135)
+                net_cvd_usd = cvd_stats["net_cvd_usd"]
+                net_cvd_btc = net_cvd_usd / max(1.0, spot_eval)
                 print(f"\n    [🌊 FLUXO DE CVD - CUMULATIVE VOLUME DELTA]:")
-                print(f"       Net CVD: ${cvd_stats['net_cvd_usd']/1e6:+.2f}M | Ratio Compra: {cvd_stats['cvd_ratio']*100:.1f}% | Sinal: {cvd_stats['dominant_signal']} ({cvd_stats['source']})")
-                if target_side == "UP" and cvd_stats["dominant_signal"] == "DOWN":
-                    print(f"       [🛡️ FILTRO CVD]: Absorção detectada! Preço subindo, mas agressão institucional é de VENDA (${cvd_stats['net_cvd_usd']/1e6:+.2f}M).")
-                    print("       -> Preservando capital! Abortando entrada primária para evitar Bull Trap.")
+                print(f"       Net CVD: ${net_cvd_usd/1e6:+.2f}M ({net_cvd_btc:+.2f} BTC) | Ratio Compra: {cvd_stats['cvd_ratio']*100:.1f}% | Sinal: {cvd_stats['dominant_signal']} ({cvd_stats['source']})")
+
+                # VETO JEV 1: Se Delta indicar UP, mas fluxo taker estiver negativo em > 15 BTC (ou dominant DOWN)
+                if target_side == "UP" and (cvd_stats["dominant_signal"] == "DOWN" or net_cvd_btc < -15.0):
+                    print(f"       [🛡️ FILTRO CVD / TAKER VETO]: Divergência detectada! Preço subindo (Delta: ${delta:+.2f}), mas agressão institucional é de VENDA ({net_cvd_btc:+.1f} BTC / ${net_cvd_usd/1e6:+.2f}M).")
+                    print("       -> Preservando capital! Abortando entrada primária para evitar Bull Trap (Jev 0-Lookahead Rule).")
                     should_trade_primary = False
-                elif target_side == "DOWN" and cvd_stats["dominant_signal"] == "UP":
-                    print(f"       [🛡️ FILTRO CVD]: Absorção detectada! Preço caindo, mas agressão institucional é de COMPRA (${cvd_stats['net_cvd_usd']/1e6:+.2f}M).")
-                    print("       -> Preservando capital! Abortando entrada primária para evitar Bear Trap.")
+                # VETO JEV 2: Se Delta indicar DOWN, mas fluxo taker estiver positivo em > 15 BTC (ou dominant UP)
+                elif target_side == "DOWN" and (cvd_stats["dominant_signal"] == "UP" or net_cvd_btc > 15.0):
+                    print(f"       [🛡️ FILTRO CVD / TAKER VETO]: Divergência detectada! Preço caindo (Delta: ${delta:+.2f}), mas agressão institucional é de COMPRA ({net_cvd_btc:+.1f} BTC / ${net_cvd_usd/1e6:+.2f}M).")
+                    print("       -> Preservando capital! Abortando entrada primária para evitar Bear Trap (Jev 0-Lookahead Rule).")
                     should_trade_primary = False
                 elif cvd_stats["dominant_signal"] == target_side:
-                    print(f"       [🔥 ALTA CONVICÇÃO CVD]: Fluxo de agressão institucional alinhado com {target_side}!")
-                    rationale += f" + Convicção CVD ({cvd_stats['dominant_signal']})"
+                    print(f"       [🔥 ALTA CONVICÇÃO CVD]: Fluxo de agressão institucional alinhado com {target_side} ({net_cvd_btc:+.1f} BTC)!")
+                    rationale += f" + Convicção CVD ({cvd_stats['dominant_signal']}, {net_cvd_btc:+.1f} BTC)"
 
         if should_trade_primary:
             print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice): ${estimated_price:.2f}")

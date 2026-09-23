@@ -39,7 +39,7 @@ JOURNAL_JSON = os.path.join(BASE_DIR, "sol_trading_journal.json")
 FIXED_STAKE = 1.00                # $1.00 por aposta
 DEADBAND_BPS = 0.00050            # 5.0 bps (0.050%) do preço da SOL
 DEADBAND_MIN_FLOOR = 0.06         # Piso mínimo de $0.06 de variação na SOL
-PRIMARY_MAX_PRICE = 0.60          # Preço máximo de entrada (60¢)
+PRIMARY_MAX_PRICE = 0.55          # Preço máximo de entrada (55¢)
 PRIMARY_MIN_PRICE = 0.35          # Preço mínimo de entrada (35¢)
 TAKE_PROFIT_PRICE = 0.86          # Take Profit antecipado (86¢)
 EVAL_POINT_SEC = 135              # 135s (2m15s da vela de 5m)
@@ -86,6 +86,34 @@ def get_binance_sol_5m_prior_candle() -> Optional[Dict[str, Any]]:
 def get_sol_candle_open(window_ts: int) -> Optional[float]:
     """Obtém a abertura da vela de 5m correspondente ao window_ts"""
     url = f"https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=5m&startTime={window_ts * 1000}&limit=1"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read().decode())
+            if data and len(data) > 0:
+                return float(data[0][1])
+    except Exception:
+        pass
+    return None
+
+def get_binance_btc_spot() -> Optional[float]:
+    """Preço Spot em tempo real do Bitcoin (BTC/USDT) na Binance (Bússola Macro)"""
+    urls = [
+        "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+        "https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT"
+    ]
+    for u in urls:
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3) as r:
+                return float(json.loads(r.read().decode())["price"])
+        except Exception:
+            pass
+    return None
+
+def get_btc_candle_open(window_ts: int) -> Optional[float]:
+    """Abertura da vela de 5m de BTC correspondente ao window_ts (Bússola Macro)"""
+    url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={window_ts * 1000}&limit=1"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=3) as r:
@@ -251,7 +279,7 @@ class SolanaPaperTrader5M:
             print(f"   -> [SINAL INTRA-VELA]: DOWN (Drift de -${abs(delta):.4f} superou deadband de ${dynamic_deadband:.4f})")
         else:
             print(f"   -> [🛡️ FILTRO DEADBAND]: Delta de ${delta:+.4f} na zona morta (< ${dynamic_deadband:.4f}). Preservando capital.")
-            time.sleep(25)
+            time.sleep(max(1, remaining_sec))
             return
 
         # 5. Filtro de Vela Anterior (Jev Trend Continuation)
@@ -264,16 +292,41 @@ class SolanaPaperTrader5M:
                 if candidate_side != prior_dir:
                     print(f"   -> [🛡️ VETO JEV]: Sinal {candidate_side} rejeitado por divergir da vela 5m anterior ({prior_dir}).")
                     print("      Preservando capital contra reversões e repiques de contratendência.")
-                    time.sleep(25)
+                    time.sleep(max(1, remaining_sec))
                     return
                 else:
                     print(f"   -> [🔥 CONFIRMAÇÃO JEV]: Tendência da vela anterior ({prior_dir}) alinhada com drift ({candidate_side})! Convicção alta.")
+
+        # 5.1 Bússola Macro BTC (Jev Lead-Lag Architecture: BTC_MACRO_COMPASS_SOL_VOLATILITY_HARVESTER)
+        btc_open = get_btc_candle_open(window_ts)
+        btc_spot = get_binance_btc_spot()
+        if btc_open and btc_spot:
+            btc_delta = btc_spot - btc_open
+            btc_drift_bps = (btc_delta / btc_open) * 10000
+            print(f"\n   [🧭 BÚSSOLA MACRO BTC - JEV LEAD-LAG]:")
+            print(f"      BTC Open: ${btc_open:,.2f} | Spot: ${btc_spot:,.2f} | Delta: ${btc_delta:+,.2f} ({btc_drift_bps:+.1f} bps)")
+
+            # Se SOL tentar UP mas BTC estiver em queda (Delta BTC < -$10.0 ou drift < -2.0 bps)
+            if candidate_side == "UP" and btc_delta < -10.0:
+                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal UP na Solana vetado! BTC em queda (Delta BTC: ${btc_delta:+,.2f}).")
+                print("      Preservando capital contra falso rompimento (Fakeout) na Solana.")
+                time.sleep(max(1, remaining_sec))
+                return
+            # Se SOL tentar DOWN mas BTC estiver em alta (Delta BTC > +$10.0 ou drift > +2.0 bps)
+            elif candidate_side == "DOWN" and btc_delta > 10.0:
+                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal DOWN na Solana vetado! BTC em alta (Delta BTC: ${btc_delta:+,.2f}).")
+                print("      Preservando capital contra falso rompimento (Fakeout) na Solana.")
+                time.sleep(max(1, remaining_sec))
+                return
+            else:
+                btc_state_str = "ALTA" if btc_delta >= 0 else "BAIXA"
+                print(f"   -> [🔥 CONFIRMAÇÃO MACRO]: Direção do BTC ({btc_state_str}, Delta: ${btc_delta:+,.2f}) alinhada/não-contraditória com Solana ({candidate_side})!")
 
         # 6. Microestrutura do Order Book CLOB da Polymarket
         book = get_clob_orderbook(target_token)
         if not book:
             print("[!] Livro de ordens da CLOB não retornou dados. Pulando.")
-            time.sleep(15)
+            time.sleep(max(1, remaining_sec))
             return
 
         best_ask = book["best_ask"]
@@ -290,7 +343,7 @@ class SolanaPaperTrader5M:
         exec_price = microprice if microprice <= best_ask else best_ask
         if exec_price > PRIMARY_MAX_PRICE:
             print(f"   [🛡️ FILTRO TETO DE PREÇO]: Preço ${exec_price:.2f} > ${PRIMARY_MAX_PRICE:.2f} (Breakeven desfavorável). Pulando entrada.")
-            time.sleep(25)
+            time.sleep(max(1, remaining_sec))
             return
 
         stake = FIXED_STAKE

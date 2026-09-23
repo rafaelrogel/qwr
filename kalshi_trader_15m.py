@@ -291,7 +291,7 @@ class KalshiTrader15M:
             print(f"   -> [SINAL INTRA-VELA]: DOWN / NO (Drift de -${abs(delta):.2f} superou deadband de ${dynamic_deadband:.2f})")
         else:
             print(f"   -> [FILTRO DEADBAND]: Delta de ${delta:+.2f} está na zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps). Preservando capital.")
-            time.sleep(30)
+            time.sleep(max(1, remaining_sec))
             return
 
         # 3.1 Filtro de Vela Anterior (Recomendação #1 do Jev — 75% Trend Continuation)
@@ -304,7 +304,7 @@ class KalshiTrader15M:
                 if target_dir != prior_dir:
                     print(f"   -> [🛡️ VETO JEV]: Sinal {target_dir} ({candidate_side.upper()}) rejeitado por divergir da vela 15m anterior ({prior_dir}).")
                     print("      Preservando capital contra exaustões e falsos rompimentos de contratendência.")
-                    time.sleep(30)
+                    time.sleep(max(1, remaining_sec))
                     return
                 else:
                     print(f"   -> [🔥 CONFIRMAÇÃO JEV]: Tendência da vela anterior ({prior_dir}) alinhada com drift intra-vela ({target_dir})! Convicção alta.")
@@ -325,7 +325,7 @@ class KalshiTrader15M:
             
             if entry_price > PRIMARY_MAX_PRICE:
                 print(f"   [🛡️ FILTRO TETO DE PREÇO]: Cota a {entry_price}¢ > {PRIMARY_MAX_PRICE}¢ (Breakeven desfavorável). Pulando entrada.")
-                time.sleep(30)
+                time.sleep(max(1, remaining_sec))
                 return
 
             stake = entry_price / 100.0
