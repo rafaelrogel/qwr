@@ -6,6 +6,10 @@
 *.key
 *.pem
 *.secret
+kalshi.txt
+*kalshi*.txt
+kalshi*key*
+
 
 # ==========================================
 # Python Runtime & Caches
