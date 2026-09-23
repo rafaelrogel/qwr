@@ -60,7 +60,9 @@ JOURNAL_JSON = os.path.join(BASE_DIR, "live_trading_journal.json")
 # Configuracoes de Risco e Estrategia Quantitativa (Modo Sniper Purista - Holdout WR 74.4%)
 FIXED_STAKE = 1.00        # $1.00 USDC por aposta primaria
 PRIMARY_MIN_PRICE = 0.35  # Preco minimo de cota primaria (evita penny traps)
-PRIMARY_MAX_PRICE = 0.62  # Preco maximo de cota primaria (Audit PIT: fill <= 0.62 garante breakeven < 60%)
+PRIMARY_MAX_PRICE = 0.60  # Preco maximo de cota primaria (Audit 2026: teto estrito protege EV, breakeven <= 60%)
+DEADBAND_BPS = 0.00021    # 2.1 bps (0.021%) do Strike (Deadband dinâmico e scale-invariant independente do preço do BTC)
+DEADBAND_MIN_FLOOR = 15.0 # Piso mínimo absoluto em USD para evitar micro-ruído
 HEDGE_STAKE = 1.00        # $1.00 USDC para hedge dinamico estilo Bonereaper (min size Polymarket CLOB)
 HEDGE_DELTA_THRESHOLD = 8.0  # Reversao de $8 no Chainlink aciona protecao antecipada de hedge
 HEDGE_MAX_PRICE = 0.45     # Preco maximo permitido para hedge (<= $0.45 garante retorno positivo se hedged)
@@ -884,22 +886,25 @@ class LiveTrader:
         should_trade_primary = False
         is_streak_snapper = False
 
-        if delta >= 18.0:
+        # Deadband dinâmico scale-invariant (2.1 bps do Strike ou piso mínimo de $15.00)
+        dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike * DEADBAND_BPS, 2))
+
+        if delta >= dynamic_deadband:
             target_side = "UP"
             target_token = token_up
             estimated_price = price_up
-            rationale = f"Drift Positivo Chainlink (+${delta:.1f} acima do strike)"
+            rationale = f"Drift Positivo Chainlink (+${delta:.1f} >= +${dynamic_deadband:.1f} acima do strike)"
             should_trade_primary = True
-        elif delta <= -18.0:
+        elif delta <= -dynamic_deadband:
             target_side = "DOWN"
             target_token = token_down
             estimated_price = price_down
-            rationale = f"Drift Negativo Chainlink (-${abs(delta):.1f} abaixo do strike)"
+            rationale = f"Drift Negativo Chainlink (-${abs(delta):.1f} <= -${dynamic_deadband:.1f} abaixo do strike)"
             should_trade_primary = True
         else:
-            # REGRA 1 (Deadband): Ruido (|Delta| < $18.00). Nao forcar aposta primaria no meio do caminho!
-            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND]: Delta de ${delta:+.2f} esta dentro da zona morta (< $18.00).")
-            print("       -> Preservando capital! Nenhuma aposta primaria forcada no ruido.")
+            # REGRA 1 (Deadband): Ruido (|Delta| < dynamic_deadband). Nao forcar aposta primaria no meio do caminho!
+            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND DINÂMICO]: Delta de ${delta:+.2f} está dentro da zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps).")
+            print("       -> Preservando capital! Nenhuma aposta primária forçada no ruído.")
             should_trade_primary = False
 
         # REGRA DE CONVERGÊNCIA OBRIGATÓRIA (Binance + Chainlink)
