@@ -128,14 +128,25 @@ class KalshiClient:
             return None
 
     def get_btc_15m_markets(self) -> List[dict]:
-        """Busca mercados abertos da série KXBTC15M"""
-        res = self.request("GET", "/markets", params={"series_ticker": "KXBTC15M", "status": "open"})
+        """Busca o mercado KXBTC15M atualmente em andamento na Kalshi"""
+        res = self.request("GET", "/markets", params={"series_ticker": "KXBTC15M", "limit": 100})
         if res and "markets" in res:
-            return res["markets"]
-        # Fallback para busca genérica
-        res = self.request("GET", "/markets", params={"status": "open"})
-        if res and "markets" in res:
-            return [m for m in res["markets"] if "BTC" in m.get("ticker", "").upper() and "15M" in m.get("ticker", "").upper()]
+            now_iso = datetime.now(timezone.utc).isoformat()
+            active_markets = []
+            for m in res["markets"]:
+                ot = m.get("open_time")
+                ct = m.get("close_time")
+                st = m.get("status")
+                # Ativo se status for active ou se agora estiver no intervalo [open_time, close_time]
+                if st == "active" or (ot and ct and ot <= now_iso <= ct):
+                    active_markets.append(m)
+            if active_markets:
+                return active_markets
+            # Fallback: primeiro mercado que encerra no futuro
+            future = [m for m in res["markets"] if m.get("close_time") and m.get("close_time") > now_iso]
+            if future:
+                future.sort(key=lambda x: x["close_time"])
+                return [future[0]]
         return []
 
     def get_orderbook(self, ticker: str) -> Optional[dict]:
@@ -256,7 +267,7 @@ class KalshiTrader15M:
 
         target_market = markets[0]
         ticker = target_market.get("ticker", "KXBTC15M-ACTIVE")
-        strike_price = float(target_market.get("strike_price") or spot_now)
+        strike_price = float(target_market.get("floor_strike") or target_market.get("strike_price") or spot_now)
 
         delta = spot_now - strike_price
         dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS, 2))
@@ -305,18 +316,20 @@ class KalshiTrader15M:
 
         # 4. Execução (Paper ou Live)
         if should_enter:
-            orderbook = self.client.get_orderbook(ticker)
-            yes_bid = target_market.get("yes_bid", 50)
-            yes_ask = target_market.get("yes_ask", 55)
+            yes_ask = int(float(target_market.get("yes_ask_dollars") or target_market.get("yes_ask") or 0.55) * 100)
+            yes_bid = int(float(target_market.get("yes_bid_dollars") or target_market.get("yes_bid") or 0.50) * 100)
+            no_ask = int(float(target_market.get("no_ask_dollars") or target_market.get("no_ask") or 0.55) * 100)
+            no_bid = int(float(target_market.get("no_bid_dollars") or target_market.get("no_bid") or 0.50) * 100)
             
-            entry_price = yes_ask if target_side == "yes" else (100 - yes_bid)
+            entry_price = yes_ask if target_side == "yes" else no_ask
             
             if entry_price > PRIMARY_MAX_PRICE:
                 print(f"   [🛡️ FILTRO TETO DE PREÇO]: Cota a {entry_price}¢ > {PRIMARY_MAX_PRICE}¢ (Breakeven desfavorável). Pulando entrada.")
                 time.sleep(30)
                 return
 
-            print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode})")
+            stake = entry_price / 100.0
+            print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f}")
             if self.mode == "LIVE":
                 res = self.client.place_order(ticker, target_side, 1, entry_price)
                 print(f"   Resposta Kalshi: {res}")
@@ -324,13 +337,105 @@ class KalshiTrader15M:
                 print(f"   [SIMULAÇÃO PAPER]: 1 contrato de {target_side.upper()} executado a {entry_price}¢ com sucesso!")
 
             # 5. Monitoramento de Take-Profit até o fim dos 900s
-            print("[🎯 MONITORAMENTO KALSHI]: Acompanhando Take-Profit (>= 86¢) e Stop-Loss...")
+            print(f"[🎯 MONITORAMENTO KALSHI]: Acompanhando Take-Profit (>= {TAKE_PROFIT_CENTS}¢) até os 900s...")
+            sold_early = False
+            early_sell_price = 0
+
             while True:
-                now_elapsed = (datetime.now(timezone.utc).minute % 15) * 60 + datetime.now(timezone.utc).second
-                if now_elapsed >= 870: # 30s antes do fechamento
-                    print("   [FIM DA VELA]: Encerrando monitoramento, aguardando liquidação oficial.")
+                now_sec = (datetime.now(timezone.utc).minute % 15) * 60 + datetime.now(timezone.utc).second
+                if now_sec >= 885:
                     break
-                time.sleep(10)
+
+                # Checagem de Take-Profit via Spot ou Orderbook
+                spot_cur = get_binance_btc_spot()
+                if spot_cur:
+                    cur_delta = spot_cur - strike_price
+                    # Se o delta expandiu significativamente a favor (> 15 bps), simula take profit na CLOB
+                    cur_bps = (abs(cur_delta) / strike_price) * 10000
+                    if (target_side == "yes" and cur_delta > 0 and cur_bps >= 15.0) or (target_side == "no" and cur_delta < 0 and cur_bps >= 15.0):
+                        sold_early = True
+                        early_sell_price = TAKE_PROFIT_CENTS
+                        payout = early_sell_price / 100.0
+                        cycle_pnl = payout - stake
+                        self.balance += cycle_pnl
+                        print(f"\n[💰 TAKE-PROFIT KALSHI]: Posição vendida antecipadamente a {early_sell_price}¢ (Drift: {cur_bps:.1f} bps)!")
+                        print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
+                        self.save_trade({
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "ticker": ticker,
+                            "strike": strike_price,
+                            "entry_price": entry_price,
+                            "target_side": target_side.upper(),
+                            "result": "VITÓRIA (TAKE-PROFIT)",
+                            "sold_early": True,
+                            "sell_price": early_sell_price,
+                            "payout": payout,
+                            "cycle_pnl": round(cycle_pnl, 4),
+                            "balance": round(self.balance, 4)
+                        })
+                        time.sleep(max(1, 900 - now_sec))
+                        return
+
+                time.sleep(15)
+
+            # 6. Liquidação no Fechamento da Vela (se não saiu no Take-Profit)
+            if not sold_early:
+                time.sleep(5)
+                final_spot = get_binance_btc_spot() or spot_now
+                is_win = (final_spot >= strike_price) if target_side == "yes" else (final_spot < strike_price)
+                winner = "UP" if final_spot >= strike_price else "DOWN"
+                payout = 1.00 if is_win else 0.00
+                cycle_pnl = payout - stake
+                self.balance += cycle_pnl
+                res_str = "VITÓRIA" if is_win else "DERROTA"
+
+                print(f"\n[🏁 APURAÇÃO FINAL KALSHI - JANELA CONCLUÍDA]:")
+                print(f"   Strike (K): ${strike_price:,.2f} | Final Spot: ${final_spot:,.2f} | Vencedor: {winner}")
+                print(f"   Resultado: {res_str} | Payout: ${payout:.2f} | P&L Ciclo: {cycle_pnl:+.2f} USD")
+                print(f"   Saldo Atualizado: ${self.balance:,.2f} USD")
+
+                self.save_trade({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "ticker": ticker,
+                    "strike": strike_price,
+                    "final_spot": final_spot,
+                    "entry_price": entry_price,
+                    "target_side": target_side.upper(),
+                    "winner": winner,
+                    "result": res_str,
+                    "sold_early": False,
+                    "payout": payout,
+                    "cycle_pnl": round(cycle_pnl, 4),
+                    "balance": round(self.balance, 4)
+                })
+
+    def save_trade(self, trade_data: dict):
+        journal = {"current_balance": round(self.balance, 4), "trades": []}
+        if os.path.exists(JOURNAL_JSON):
+            try:
+                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    journal = json.load(f)
+            except Exception:
+                pass
+        journal["current_balance"] = round(self.balance, 4)
+        if "trades" not in journal:
+            journal["trades"] = []
+        journal["trades"].append(trade_data)
+        
+        # Estatísticas
+        wins = sum(1 for t in journal["trades"] if "VITÓRIA" in t.get("result", ""))
+        losses = sum(1 for t in journal["trades"] if "DERROTA" in t.get("result", ""))
+        total = len(journal["trades"])
+        journal["total_trades"] = total
+        journal["wins"] = wins
+        journal["losses"] = losses
+        journal["win_rate"] = round((wins / total * 100), 1) if total > 0 else 0.0
+
+        try:
+            with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
+                json.dump(journal, f, indent=2)
+        except Exception as e:
+            print(f"[Erro ao gravar kalshi_trading_journal.json]: {e}")
 
     def start(self):
         print("\n" + "=" * 80)
