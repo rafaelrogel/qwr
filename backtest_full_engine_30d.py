@@ -161,34 +161,16 @@ def run_full_engine_simulation():
         prior_ts = all_5m_ts[idx-12:idx]
         hourly_atr = sum(history_5m[t]["tr"] for t in prior_ts if t in history_5m) / 12.0
 
-        # Verificação do Streak Snapper (4 velas anteriores completas)
-        prior_4_ts = all_5m_ts[idx-4:idx]
-        prior_4 = [history_5m[t] for t in prior_4_ts if t in history_5m]
+        # Streak Snapper DESATIVADO (Auditoria Quantitativa 5 Anos: WR 37.2% causava perda líquida)
         has_streak = False
         streak_reversal = None
-        if len(prior_4) == 4:
-            dirs = [p["winner"] for p in prior_4]
-            if all(d == "UP" for d in dirs):
-                cum_move = abs(prior_4[-1]["close"] - prior_4[0]["open"])
-                if hourly_atr > 0 and (cum_move / hourly_atr) >= 3.0:
-                    has_streak = True
-                    streak_reversal = "DOWN"
-            elif all(d == "DOWN" for d in dirs):
-                cum_move = abs(prior_4[-1]["close"] - prior_4[0]["open"])
-                if hourly_atr > 0 and (cum_move / hourly_atr) >= 3.0:
-                    has_streak = True
-                    streak_reversal = "UP"
 
-        # Decisão de Entrada Primária aos 135s
+        # Decisão de Entrada Primária aos 135s (Puramente Deadband de Momentum comprovado)
         should_enter_primary = False
         target_side = None
         is_streak_trade = False
 
-        if has_streak:
-            target_side = streak_reversal
-            is_streak_trade = True
-            should_enter_primary = True
-        elif abs(delta_135s) >= 15.0: # Deadband
+        if abs(delta_135s) >= 15.0: # Deadband
             target_side = "UP" if delta_135s > 0 else "DOWN"
             should_enter_primary = True
 
