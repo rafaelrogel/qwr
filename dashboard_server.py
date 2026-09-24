@@ -1410,6 +1410,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
                 <span>DESK 5: NATGAS 15M PAPER</span>
             </div>
+            <div class="status-chip" id="chipDesk6">
+                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
+                <span>DESK 6: YIELD 98¢ PAPER</span>
+            </div>
             <div class="status-chip mono" id="clockUTC" style="color: var(--neon-amber); font-weight: 600;">
                 UTC: --:--:--
             </div>
@@ -1452,6 +1456,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div class="switch-desc">Total Consolidado CFTC: <span id="navKalshiTotal" class="mono font-bold" style="color: var(--neon-cyan); font-size: 13px;">$10.36 USD</span> <span style="color: var(--text-faint); font-size: 11px;">(Shard 0: <span id="navKalshiS0" style="color: var(--neon-amber); font-weight: 700;">$1.31</span> | Shard 2: <span id="navKalshiS2" style="color: var(--neon-green); font-weight: 700;">$9.05</span>)</span></div>
                 </div>
                 <span class="switch-badge" style="background: rgba(0, 240, 255, 0.15); color: var(--neon-cyan); border: 1px solid var(--neon-cyan);">SALDO CONSOLIDADO</span>
+            </div>
+
+            <div class="desk-switch-tab" id="tabYield" onclick="switchMainTab('yield')">
+                <div class="switch-icon" style="color: var(--neon-purple); background: rgba(189, 0, 255, 0.1);">🌾</div>
+                <div class="switch-content">
+                    <div class="switch-title">PÁGINA 3: DESK 6 — YIELD HARVESTER 98¢ (JEV SCREENER)</div>
+                    <div class="switch-desc">The 98¢ Trade: <span id="navYieldStats" class="mono font-bold" style="color: var(--neon-purple); font-size: 13px;">0/5 Posições</span> <span style="color: var(--text-faint); font-size: 11px;">(Alocado: <span id="navYieldAlloc" style="color: var(--neon-amber); font-weight: 700;">$0.00 / $5.00</span> | P&L: <span id="navYieldPnl" style="color: var(--neon-green); font-weight: 700;">+$0.00</span>)</span></div>
+                </div>
+                <span class="switch-badge" style="background: rgba(189, 0, 255, 0.15); color: var(--neon-purple); border: 1px solid var(--neon-purple);">THE 98¢ TRADE</span>
             </div>
 
             <a id="btnOpenNewTab" href="/kalshi" target="_blank" class="open-tab-btn" title="Abrir Desk Kalshi em outra aba do navegador">
@@ -1843,6 +1856,80 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- ========================================================================= -->
+        <!-- VIEW 3: DESK 6 YIELD HARVESTER (THE 98¢ TRADE & JEV AI) -->
+        <!-- ========================================================================= -->
+        <div id="viewYield" class="desk-group-view" style="display: none;">
+            <div class="metrics-grid">
+                <div class="metric-card" style="border-top: 2px solid var(--neon-purple);">
+                    <div class="metric-label">Posições Ativas (Cap Máx: 5)</div>
+                    <div class="metric-val mono" id="d6ActiveCount" style="color: var(--neon-purple);">0 / 5</div>
+                    <div class="metric-sub">Teto de Stake: $1.00 USD por contrato</div>
+                </div>
+                <div class="metric-card" style="border-top: 2px solid var(--neon-amber);">
+                    <div class="metric-label">Exposição Alocada em Carteira</div>
+                    <div class="metric-val mono" id="d6Exposure" style="color: var(--neon-amber);">$0.00 / $5.00 USD</div>
+                    <div class="metric-sub">Preservação de Margem para Desks 1 & 2</div>
+                </div>
+                <div class="metric-card" style="border-top: 2px solid var(--neon-green);">
+                    <div class="metric-label">Lucro Líquido Acumulado (P&L)</div>
+                    <div class="metric-val mono" id="d6Pnl" style="color: var(--neon-green);">+$0.00 USD</div>
+                    <div class="metric-sub">Yield médio por trade: +1.5% a +2.0%</div>
+                </div>
+                <div class="metric-card" style="border-top: 2px solid var(--neon-cyan);">
+                    <div class="metric-label">Auditor Forense Jev (TypeSafe)</div>
+                    <div class="metric-val mono" style="color: var(--neon-cyan);">SystemOne ATIVO</div>
+                    <div class="metric-sub">Latência Sub-segundo (~250ms) | Veto Rigoroso</div>
+                </div>
+            </div>
+
+            <!-- CARD DESK 6 OVERVIEW -->
+            <div class="desk-card" style="border-top: 2px solid var(--neon-purple); margin-top: 20px;">
+                <div class="desk-header">
+                    <div class="desk-badge-group">
+                        <div class="asset-icon" style="color: var(--neon-purple);">🌾</div>
+                        <div>
+                            <div class="desk-title">Desk 6: 98¢ Yield Harvester (Polymarket & Kalshi)</div>
+                            <div style="font-size: 11px; color: var(--text-faint);">Estratégia "The 98¢ Trade": Compras a 96.5¢-99.2¢ filtradas pela IA Jev contra armadilhas da UMA</div>
+                        </div>
+                    </div>
+                    <span class="desk-mode-tag" id="d6Badge" style="background: rgba(189, 0, 255, 0.15); color: var(--neon-purple); border: 1px solid var(--neon-purple);">● PAPER SIMULATION (DESK 6)</span>
+                </div>
+
+                <div class="decision-banner" id="d6Banner" style="border-left-color: var(--neon-purple); margin-top: 15px;">
+                    Carregando estado do scanner e auditor Jev...
+                </div>
+            </div>
+
+            <!-- TABLE DESK 6 POSITIONS -->
+            <div class="table-card" style="margin-top: 20px;">
+                <div class="table-header">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 15px; font-weight: 700;">📋 Contratos 98¢ Ativos & Histórico de Yield</div>
+                        <span class="mono" style="font-size: 11px; color: var(--text-faint);">[ desk6_yield_journal.json ]</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="quant-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Exchange</th>
+                                <th>Mercado / Pergunta</th>
+                                <th>Alvo</th>
+                                <th>Preço Pago</th>
+                                <th>Stake</th>
+                                <th>Lucro Potencial</th>
+                            </tr>
+                        </thead>
+                        <tbody id="d6TableBody">
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-faint); padding: 18px;">Carregando posições do Desk 6...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -1853,26 +1940,45 @@ HTML_CONTENT = """<!DOCTYPE html>
         function switchMainTab(tab) {
             const viewPoly = document.getElementById('viewPolymarket');
             const viewKal = document.getElementById('viewKalshi');
+            const viewYield = document.getElementById('viewYield');
             const tabPoly = document.getElementById('tabPolymarket');
             const tabKal = document.getElementById('tabKalshi');
+            const tabYield = document.getElementById('tabYield');
             const btnTab = document.getElementById('btnOpenNewTab');
 
             if (tab === 'kalshi') {
-                viewPoly.style.display = 'none';
-                viewKal.style.display = 'block';
-                tabKal.classList.add('active');
-                tabPoly.classList.remove('active');
+                if (viewPoly) viewPoly.style.display = 'none';
+                if (viewKal) viewKal.style.display = 'block';
+                if (viewYield) viewYield.style.display = 'none';
+                if (tabKal) tabKal.classList.add('active');
+                if (tabPoly) tabPoly.classList.remove('active');
+                if (tabYield) tabYield.classList.remove('active');
                 if (btnTab) {
                     btnTab.href = '/polymarket';
                     btnTab.innerHTML = '<span>↗️ Abrir Polymarket em Nova Aba</span>';
                     btnTab.title = 'Abrir Desks Polymarket em outra aba';
                 }
                 history.replaceState(null, null, '#kalshi');
+            } else if (tab === 'yield') {
+                if (viewPoly) viewPoly.style.display = 'none';
+                if (viewKal) viewKal.style.display = 'none';
+                if (viewYield) viewYield.style.display = 'block';
+                if (tabYield) tabYield.classList.add('active');
+                if (tabPoly) tabPoly.classList.remove('active');
+                if (tabKal) tabKal.classList.remove('active');
+                if (btnTab) {
+                    btnTab.href = '/yield';
+                    btnTab.innerHTML = '<span>↗️ Abrir Desk 6 em Nova Aba</span>';
+                    btnTab.title = 'Abrir Desk 6 Yield Harvester';
+                }
+                history.replaceState(null, null, '#yield');
             } else {
-                viewPoly.style.display = 'block';
-                viewKal.style.display = 'none';
-                tabPoly.classList.add('active');
-                tabKal.classList.remove('active');
+                if (viewPoly) viewPoly.style.display = 'block';
+                if (viewKal) viewKal.style.display = 'none';
+                if (viewYield) viewYield.style.display = 'none';
+                if (tabPoly) tabPoly.classList.add('active');
+                if (tabKal) tabKal.classList.remove('active');
+                if (tabYield) tabYield.classList.remove('active');
                 if (btnTab) {
                     btnTab.href = '/kalshi';
                     btnTab.innerHTML = '<span>↗️ Abrir Kalshi em Nova Aba</span>';
@@ -1887,6 +1993,8 @@ HTML_CONTENT = """<!DOCTYPE html>
             const hash = window.location.hash.toLowerCase();
             if (path.includes('kalshi') || hash === '#kalshi') {
                 switchMainTab('kalshi');
+            } else if (path.includes('yield') || hash === '#yield') {
+                switchMainTab('yield');
             } else {
                 switchMainTab('polymarket');
             }
@@ -2170,6 +2278,83 @@ HTML_CONTENT = """<!DOCTYPE html>
                     }
                 }
 
+                // Sincroniza Chip Desk 6 (Yield Harvester 98¢)
+                const desk6Mode = (data.desk6_mode || 'PAPER').toUpperCase();
+                const chipDesk6 = document.getElementById('chipDesk6');
+                if (chipDesk6) {
+                    if (desk6Mode === 'LIVE') {
+                        chipDesk6.innerHTML = '<span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span><span>DESK 6: YIELD LIVE</span>';
+                    } else {
+                        chipDesk6.innerHTML = '<span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span><span>DESK 6: YIELD 98¢ PAPER</span>';
+                    }
+                }
+
+                // Sincroniza PÁGINA 3 (DESK 6 YIELD HARVESTER)
+                const d6 = data.desk6_state || {};
+                const d6ActiveCount = document.getElementById('d6ActiveCount');
+                if (d6ActiveCount) d6ActiveCount.innerText = `${d6.active_positions_count || 0} / ${d6.max_active_positions || 5}`;
+
+                const d6Exposure = document.getElementById('d6Exposure');
+                if (d6Exposure) d6Exposure.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $${Number(d6.max_exposure_usd || 5).toFixed(2)} USD`;
+
+                const d6Pnl = document.getElementById('d6Pnl');
+                const pnlVal = Number(d6.total_pnl_usd || 0);
+                if (d6Pnl) {
+                    d6Pnl.innerText = `${pnlVal >= 0 ? '+' : ''}$${pnlVal.toFixed(2)} USD`;
+                    d6Pnl.style.color = pnlVal >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
+                }
+
+                const navYieldStats = document.getElementById('navYieldStats');
+                if (navYieldStats) navYieldStats.innerText = `${d6.active_positions_count || 0}/5 Posições`;
+
+                const navYieldAlloc = document.getElementById('navYieldAlloc');
+                if (navYieldAlloc) navYieldAlloc.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $5.00`;
+
+                const navYieldPnl = document.getElementById('navYieldPnl');
+                if (navYieldPnl) {
+                    navYieldPnl.innerText = `${pnlVal >= 0 ? '+' : ''}$${pnlVal.toFixed(2)}`;
+                    navYieldPnl.style.color = pnlVal >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
+                }
+
+                const d6Badge = document.getElementById('d6Badge');
+                if (d6Badge) {
+                    if (desk6Mode === 'LIVE') {
+                        d6Badge.className = 'desk-mode-tag mode-live';
+                        d6Badge.innerText = '● REAL TRADING (DESK 6)';
+                    } else {
+                        d6Badge.className = 'desk-mode-tag';
+                        d6Badge.style.background = 'rgba(189, 0, 255, 0.15)';
+                        d6Badge.style.color = 'var(--neon-purple)';
+                        d6Badge.style.border = '1px solid var(--neon-purple)';
+                        d6Badge.innerText = '● PAPER SIMULATION (DESK 6)';
+                    }
+                }
+
+                const d6Banner = document.getElementById('d6Banner');
+                if (d6Banner) {
+                    d6Banner.innerHTML = `Última Varredura: <strong>${d6.last_scan_utc || 'Iniciando...'}</strong> | Candidatos Brutos: <strong>${d6.last_candidates_scanned || 0}</strong> analisados | Aprovados: <strong>${d6.last_candidates_approved || 0}</strong> | Próximo Scan: <strong>a cada 30 min</strong>`;
+                }
+
+                const d6TableBody = document.getElementById('d6TableBody');
+                if (d6TableBody) {
+                    const positions = d6.positions || [];
+                    if (positions.length === 0) {
+                        d6TableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-faint); padding: 18px;">Nenhuma posição aberta no momento. O Screener Jev está monitorando mercados e rejeitando riscos de cauda e ambiguidades de oráculo.</td></tr>';
+                    } else {
+                        d6TableBody.innerHTML = positions.map(p => `
+                            <tr>
+                                <td class="mono">#${p.id}</td>
+                                <td><span class="platform-tag" style="background: rgba(0,240,255,0.1); color: var(--neon-cyan); padding: 2px 6px; border-radius: 4px; font-size: 11px;">${p.platform}</span></td>
+                                <td style="max-width: 320px; font-weight: 500;">${p.question}</td>
+                                <td><span style="font-weight: 700; color: var(--neon-green);">${p.outcome}</span></td>
+                                <td class="mono">$${Number(p.price).toFixed(3)}</td>
+                                <td class="mono">$${Number(p.stake).toFixed(2)}</td>
+                                <td class="mono" style="color: var(--neon-green);">+$${Number(p.potential_pnl).toFixed(4)} (+${p.potential_roi_pct}%)</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+
                 // =========================================================
                 // 1. SALDO COMPARTILHADO & MÉTRICAS POLYMARKET (DESKS 1 & 2)
                 // =========================================================
@@ -2441,6 +2626,30 @@ HTML_CONTENT = """<!DOCTYPE html>
 </html>
 """
 
+def get_desk6_data() -> Dict[str, Any]:
+    state_file = os.path.join(BASE_DIR, "desk6_state.json")
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "desk": "Desk 6",
+        "name": "98¢ Yield Harvester",
+        "mode": "PAPER",
+        "active": True,
+        "last_scan_utc": "Iniciando...",
+        "active_positions_count": 0,
+        "max_active_positions": 5,
+        "current_exposure_usd": 0.0,
+        "max_exposure_usd": 5.0,
+        "total_pnl_usd": 0.0,
+        "last_candidates_scanned": 0,
+        "last_candidates_approved": 0,
+        "positions": []
+    }
+
 # ===================== REQUISITOS DO SERVIDOR HTTP =====================
 class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -2536,7 +2745,7 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         global GLOBAL_STATE, btc_engine
         path_clean = self.path.split('?')[0].rstrip('/')
-        if path_clean in ("", "/polymarket", "/kalshi"):
+        if path_clean in ("", "/polymarket", "/kalshi", "/yield"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
@@ -2584,6 +2793,8 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
                 "sol_mode": ENV_CFG.get("SOL_MODE", "LIVE").upper(),
                 "kalshi_mode": ENV_CFG.get("KALSHI_MODE", "LIVE").upper(),
                 "natgas_15m_mode": ENV_CFG.get("NATGAS_15M_MODE", "PAPER").upper(),
+                "desk6_mode": ENV_CFG.get("DESK6_MODE", "PAPER").upper(),
+                "desk6_state": get_desk6_data(),
                 "account": GLOBAL_STATE["account"],
                 "kalshi_balances": GLOBAL_STATE.get("kalshi_balances", {}),
                 "kill_switch_active": is_halted,
@@ -2635,6 +2846,7 @@ def run_server():
     sol_mode = ENV_CFG.get('SOL_MODE', 'PAPER').upper()
     kalshi_mode = ENV_CFG.get('KALSHI_MODE', 'PAPER').upper()
     natgas_15m_mode = ENV_CFG.get('NATGAS_15M_MODE', 'PAPER').upper()
+    desk6_mode = ENV_CFG.get('DESK6_MODE', 'PAPER').upper()
 
     print("=" * 75)
     print(f"-> ANTIGRAVITY QUANT DESK rodando em http://localhost:{PORT}")
@@ -2643,6 +2855,7 @@ def run_server():
     print(f"-> Desk 3: Kalshi BTC 15m [{kalshi_mode}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
     print(f"-> Desk 4: Kalshi NatGas EIA Storage [STANDBY] | NOAA/GFS Weather Engine")
     print(f"-> Desk 5: Kalshi NatGas 15m [{natgas_15m_mode}] | KXNATGAS15M Intraday Trader")
+    print(f"-> Desk 6: Yield Harvester 98¢ [{desk6_mode}] | Jev SystemOne Rule Screener")
     print("=" * 75)
 
     server = ThreadedTCPServer(("127.0.0.1", PORT), QuantDashboardHandler)
