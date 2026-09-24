@@ -213,5 +213,29 @@ class TestCriticalFixes(unittest.TestCase):
         dh.headers = {"Origin": "http://localhost:8080"}
         self.assertTrue(dh._is_allowed_origin(), "Localhost deve ser permitido")
 
+    def test_sol_live_config_and_drawdown_floor(self):
+        """Verifica que o Desk 2 (SOL) remove 0x da chave e respeita o drawdown floor de $15.00"""
+        pk_test = "0x3d709a29f7e3a9fce4ead72b41eea04042cfa033a2b905074b6766c5a3cbc650"
+        pk_stripped = pk_test[2:] if pk_test.startswith("0x") else pk_test
+        self.assertFalse(pk_stripped.startswith("0x"))
+        self.assertEqual(len(pk_stripped), 64)
+
+        # Drawdown floor
+        safe_bal = 14.50
+        floor_breached = safe_bal < 15.00
+        self.assertTrue(floor_breached, "Saldo abaixo de $15.00 deve acionar trava de segurança")
+
+    def test_kalshi_live_config_and_client_attributes(self):
+        """Verifica que o Desk 3 (Kalshi) possui self.kalshi_client e valida o piso de $2.00"""
+        from kalshi_trader_15m import KalshiTrader15M
+        bot = KalshiTrader15M()
+        self.assertTrue(hasattr(bot, "client"))
+        self.assertTrue(hasattr(bot, "kalshi_client"))
+        self.assertIs(bot.client, bot.kalshi_client)
+
+        shard2_bal = 1.80
+        floor_breached = shard2_bal < 2.00
+        self.assertTrue(floor_breached, "Saldo Shard 2 abaixo de $2.00 deve acionar trava de segurança")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

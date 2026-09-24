@@ -256,6 +256,7 @@ def get_binance_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
 class KalshiTrader15M:
     def __init__(self):
         self.client = KalshiClient(KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH)
+        self.kalshi_client = self.client  # Garantia de compatibilidade de atributos
         self.mode = EXECUTION_MODE
         self.balance = 35.00 # fallback padrão
         if self.mode == "LIVE":
@@ -392,6 +393,16 @@ class KalshiTrader15M:
             print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f}")
             real_order_id = ""
             if self.mode == "LIVE":
+                # Validação de Saldo e Piso de Segurança Kalshi
+                b_info = self.client.get_real_balance()
+                real_s2 = b_info.get("shard2_balance", 0.0)
+                if real_s2 and real_s2 > 0:
+                    self.balance = real_s2
+                if self.balance < 2.00:
+                    print(f"   [🚨 TRAVA DE SEGURANÇA]: Saldo Kalshi Shard 2 (${self.balance:.2f}) abaixo do piso mínimo ($2.00). Abortando para preservar capital.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+
                 res = self.client.place_order(ticker, target_side, 1, entry_price)
                 print(f"   [⚡ RESPOSTA DA ORDEM REAL KALSHI]: {res}")
                 if not res or ("order_id" not in res and "order" not in res):
@@ -427,7 +438,7 @@ class KalshiTrader15M:
                         if self.mode == "LIVE":
                             print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA (TAKE-PROFIT) NA KALSHI]:")
                             print(f"   Ticker: {ticker} | Lado: {target_side.upper()} | Preço Alvo: {early_sell_price}¢")
-                            sell_res = self.kalshi_client.place_order(ticker, target_side, count=1, price_cents=early_sell_price, action="sell")
+                            sell_res = self.client.place_order(ticker, target_side, count=1, price_cents=early_sell_price, action="sell")
                             if isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res):
                                 order_data = sell_res.get("order", {}) if isinstance(sell_res.get("order"), dict) else sell_res
                                 sell_order_id = order_data.get("order_id", "SUBMITTED")
@@ -439,20 +450,20 @@ class KalshiTrader15M:
                                     print("   -> Aguardando execução (fill) da ordem no livro Kalshi...")
                                     for _ in range(4):
                                         time.sleep(5)
-                                        chk = self.kalshi_client.get_order_status(sell_order_id)
+                                        chk = self.client.get_order_status(sell_order_id)
                                         if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
-                                            cur_st = str(chk["order"].get("status", "")).lower()
-                                            if cur_st in ("executed", "filled"):
-                                                status = "filled"
-                                                print("   -> Ordem Kalshi PREENCHIDA (Filled) com sucesso!")
-                                                break
+                                             cur_st = str(chk["order"].get("status", "")).lower()
+                                             if cur_st in ("executed", "filled"):
+                                                 status = "filled"
+                                                 print("   -> Ordem Kalshi PREENCHIDA (Filled) com sucesso!")
+                                                 break
 
                                 if status in ("executed", "filled"):
                                     sell_ok = True
                                 else:
                                     print(f"   [⚠️ VENDA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
                                     try:
-                                        self.kalshi_client.cancel_order(sell_order_id)
+                                        self.client.cancel_order(sell_order_id)
                                     except Exception:
                                         pass
                                     sell_ok = False
@@ -464,7 +475,14 @@ class KalshiTrader15M:
                             sold_early = True
                             payout = early_sell_price / 100.0
                             cycle_pnl = payout - stake
-                            self.balance += cycle_pnl
+                            if self.mode == "LIVE":
+                                time.sleep(3)
+                                b_info = self.client.get_real_balance()
+                                real_s2 = b_info.get("shard2_balance")
+                                if real_s2 and real_s2 > 0:
+                                    self.balance = real_s2
+                            else:
+                                self.balance += cycle_pnl
                             print(f"\n[💰 TAKE-PROFIT KALSHI CONFIRMADO]: Posição vendida a {early_sell_price}¢ (Drift: {cur_bps:.1f} bps)!")
                             print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
                             self.save_trade({
@@ -496,7 +514,14 @@ class KalshiTrader15M:
                 winner = "UP" if final_spot >= strike_price else "DOWN"
                 payout = 1.00 if is_win else 0.00
                 cycle_pnl = payout - stake
-                self.balance += cycle_pnl
+                if self.mode == "LIVE":
+                    time.sleep(5)
+                    b_info = self.client.get_real_balance()
+                    real_s2 = b_info.get("shard2_balance")
+                    if real_s2 and real_s2 > 0:
+                        self.balance = real_s2
+                else:
+                    self.balance += cycle_pnl
                 res_str = "VITÓRIA" if is_win else "DERROTA"
 
                 print(f"\n[🏁 APURAÇÃO FINAL KALSHI - JANELA CONCLUÍDA]:")

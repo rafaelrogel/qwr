@@ -68,8 +68,8 @@ def load_env_config() -> Dict[str, str]:
 
 ENV_CFG = load_env_config()
 POLY_FUNDER_ADDRESS = ENV_CFG.get("POLY_FUNDER_ADDRESS", "0xE00Bd7989108c9016cCF4479ce03BaCa09f6314c")
-POLY_SIGNER_ADDRESS = ENV_CFG.get("POLY_SIGNER_ADDRESS", "0xC526EF7927565cF03e2119b4179cdaD048e0F485")
-POLYGON_PRIVATE_KEY = ENV_CFG.get("POLYGON_PRIVATE_KEY", "")
+POLY_PRIVATE_KEY_RAW = ENV_CFG.get("POLYGON_PRIVATE_KEY", "").strip()
+POLYGON_PRIVATE_KEY = POLY_PRIVATE_KEY_RAW[2:] if POLY_PRIVATE_KEY_RAW.startswith("0x") else POLY_PRIVATE_KEY_RAW
 SOL_MODE = ENV_CFG.get("SOL_MODE", "LIVE").upper()
 
 # ===================== PARÂMETROS QUANTITATIVOS (JEV AI CALIBRATED) =====================
@@ -344,7 +344,7 @@ class SolanaTrader5M:
                     if self.mode == "PAPER":
                         self.balance = float(data.get("current_balance", self.balance))
                     self.trades = data.get("trades", [])
-                    self.traded_windows = {int(t["window_ts"]) for t in self.trades if "window_ts" in t}
+                    self.traded_windows = {int(t.get("window_ts") or t.get("cycle_ts", 0)) for t in self.trades if ("window_ts" in t or "cycle_ts" in t)}
             except Exception:
                 pass
 
@@ -403,9 +403,13 @@ class SolanaTrader5M:
         print(f"  Funder Verificado: {POLY_FUNDER_ADDRESS[:10]}... | Saldo {self.mode}: ${self.balance:,.2f} USD")
         print("=" * 90)
 
-        # Se em modo LIVE, valida saldo antes de prosseguir
+        # Se em modo LIVE, valida saldo e piso de proteção antes de prosseguir
         if self.mode == "LIVE":
             live_bal = self.get_usdc_balance()
+            if live_bal < 15.00:
+                print(f"   [🚨 TRAVA DE SEGURANÇA]: Saldo Safe (${live_bal:.2f} USDC) abaixo do piso de proteção ($15.00). Preservando depósito.")
+                time.sleep(10)
+                return
             if live_bal < FIXED_STAKE:
                 print(f"   [!] Saldo insuficiente para aposta ({live_bal:.2f} < ${FIXED_STAKE:.2f} USDC). Aguardando fundos...")
                 time.sleep(10)
