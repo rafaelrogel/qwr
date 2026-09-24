@@ -1462,7 +1462,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="switch-icon" style="color: var(--neon-purple); background: rgba(189, 0, 255, 0.1);">🌾</div>
                 <div class="switch-content">
                     <div class="switch-title">PÁGINA 3: DESK 6 — YIELD HARVESTER 98¢ (JEV SCREENER)</div>
-                    <div class="switch-desc">The 98¢ Trade: <span id="navYieldStats" class="mono font-bold" style="color: var(--neon-purple); font-size: 13px;">0/5 Posições</span> <span style="color: var(--text-faint); font-size: 11px;">(Alocado: <span id="navYieldAlloc" style="color: var(--neon-amber); font-weight: 700;">$0.00 / $5.00</span> | P&L: <span id="navYieldPnl" style="color: var(--neon-green); font-weight: 700;">+$0.00</span>)</span></div>
+                    <div class="switch-desc">The 98¢ Trade: <span id="navYieldStats" class="mono font-bold" style="color: var(--neon-purple); font-size: 13px;">0/10 Posições</span> <span style="color: var(--text-faint); font-size: 11px;">(Alocado: <span id="navYieldAlloc" style="color: var(--neon-amber); font-weight: 700;">$0.00 / $10.00</span> | P&L: <span id="navYieldPnl" style="color: var(--neon-green); font-weight: 700;">+$0.00</span>)</span></div>
                 </div>
                 <span class="switch-badge" style="background: rgba(189, 0, 255, 0.15); color: var(--neon-purple); border: 1px solid var(--neon-purple);">THE 98¢ TRADE</span>
             </div>
@@ -1862,14 +1862,14 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div id="viewYield" class="desk-group-view" style="display: none;">
             <div class="metrics-grid">
                 <div class="metric-card" style="border-top: 2px solid var(--neon-purple);">
-                    <div class="metric-label">Posições Ativas (Cap Máx: 5)</div>
-                    <div class="metric-val mono" id="d6ActiveCount" style="color: var(--neon-purple);">0 / 5</div>
-                    <div class="metric-sub">Teto de Stake: $1.00 USD por contrato</div>
+                    <div class="metric-label">Posições Ativas (Cap Máx: 10)</div>
+                    <div class="metric-val mono" id="d6ActiveCount" style="color: var(--neon-purple);">0 / 10</div>
+                    <div class="metric-sub" id="d6BreakdownSub">5 Polymarket | 5 Kalshi ($1.00 cada)</div>
                 </div>
                 <div class="metric-card" style="border-top: 2px solid var(--neon-amber);">
                     <div class="metric-label">Exposição Alocada em Carteira</div>
-                    <div class="metric-val mono" id="d6Exposure" style="color: var(--neon-amber);">$0.00 / $5.00 USD</div>
-                    <div class="metric-sub">Preservação de Margem para Desks 1 & 2</div>
+                    <div class="metric-val mono" id="d6Exposure" style="color: var(--neon-amber);">$0.00 / $10.00 USD</div>
+                    <div class="metric-sub">Teto de $5.00 Poly + $5.00 Kalshi</div>
                 </div>
                 <div class="metric-card" style="border-top: 2px solid var(--neon-green);">
                     <div class="metric-label">Lucro Líquido Acumulado (P&L)</div>
@@ -2292,10 +2292,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                 // Sincroniza PÁGINA 3 (DESK 6 YIELD HARVESTER)
                 const d6 = data.desk6_state || {};
                 const d6ActiveCount = document.getElementById('d6ActiveCount');
-                if (d6ActiveCount) d6ActiveCount.innerText = `${d6.active_positions_count || 0} / ${d6.max_active_positions || 5}`;
+                if (d6ActiveCount) d6ActiveCount.innerText = `${d6.active_positions_count || 0} / ${d6.max_active_positions || 10}`;
+
+                const d6BreakdownSub = document.getElementById('d6BreakdownSub');
+                if (d6BreakdownSub) d6BreakdownSub.innerText = `Poly: ${d6.poly_active_count || 0}/5 | Kalshi: ${d6.kalshi_active_count || 0}/5 ($1.00 cada)`;
 
                 const d6Exposure = document.getElementById('d6Exposure');
-                if (d6Exposure) d6Exposure.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $${Number(d6.max_exposure_usd || 5).toFixed(2)} USD`;
+                if (d6Exposure) d6Exposure.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $${Number(d6.max_exposure_usd || 10).toFixed(2)} USD`;
 
                 const d6Pnl = document.getElementById('d6Pnl');
                 const pnlVal = Number(d6.total_pnl_usd || 0);
@@ -2305,10 +2308,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
 
                 const navYieldStats = document.getElementById('navYieldStats');
-                if (navYieldStats) navYieldStats.innerText = `${d6.active_positions_count || 0}/5 Posições`;
+                if (navYieldStats) navYieldStats.innerText = `${d6.active_positions_count || 0}/10 Posições`;
 
                 const navYieldAlloc = document.getElementById('navYieldAlloc');
-                if (navYieldAlloc) navYieldAlloc.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $5.00`;
+                if (navYieldAlloc) navYieldAlloc.innerText = `$${Number(d6.current_exposure_usd || 0).toFixed(2)} / $10.00`;
 
                 const navYieldPnl = document.getElementById('navYieldPnl');
                 if (navYieldPnl) {

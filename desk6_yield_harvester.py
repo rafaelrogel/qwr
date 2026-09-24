@@ -50,8 +50,10 @@ STATE_JSON = os.path.join(BASE_DIR, "desk6_state.json")
 
 # Parâmetros de Risco Aprovados
 FIXED_STAKE = float(os.getenv("DESK6_STAKE", "1.00"))        # $1.00 por mercado
-MAX_ACTIVE_POSITIONS = int(os.getenv("DESK6_MAX_POS", "5"))   # Max 5 posições abertas
-MAX_TOTAL_EXPOSURE = FIXED_STAKE * MAX_ACTIVE_POSITIONS      # Teto $5.00
+MAX_POLY_POSITIONS = int(os.getenv("DESK6_MAX_POLY_POS", "5"))     # Max 5 no Polymarket
+MAX_KALSHI_POSITIONS = int(os.getenv("DESK6_MAX_KALSHI_POS", "5")) # Max 5 na Kalshi
+MAX_ACTIVE_POSITIONS = MAX_POLY_POSITIONS + MAX_KALSHI_POSITIONS   # 10 no Total
+MAX_TOTAL_EXPOSURE = FIXED_STAKE * MAX_ACTIVE_POSITIONS            # Teto $10.00
 SCAN_INTERVAL_SEC = int(os.getenv("DESK6_INTERVAL", "1800")) # 30 minutos
 MIN_PRICE = float(os.getenv("DESK6_MIN_PRICE", "0.965"))     # 96.5¢
 MAX_PRICE = float(os.getenv("DESK6_MAX_PRICE", "0.992"))     # 99.2¢
@@ -121,6 +123,8 @@ def save_journal(data: Dict[str, Any]):
 def update_state_file(data: Dict[str, Any], last_scan_time: str, candidates_found: int, candidates_approved: int):
     try:
         active = [p for p in data.get("positions", []) if p.get("status") == "OPEN"]
+        poly_active = [p for p in active if p.get("platform") == "Polymarket"]
+        kalshi_active = [p for p in active if p.get("platform") == "Kalshi"]
         total_pnl = sum(p.get("pnl", 0.0) for p in data.get("positions", []) if p.get("status") in ["WON", "LOST"])
         state = {
             "desk": "Desk 6",
@@ -131,6 +135,10 @@ def update_state_file(data: Dict[str, Any], last_scan_time: str, candidates_foun
             "next_scan_in_sec": SCAN_INTERVAL_SEC,
             "active_positions_count": len(active),
             "max_active_positions": MAX_ACTIVE_POSITIONS,
+            "poly_active_count": len(poly_active),
+            "max_poly_positions": MAX_POLY_POSITIONS,
+            "kalshi_active_count": len(kalshi_active),
+            "max_kalshi_positions": MAX_KALSHI_POSITIONS,
             "current_exposure_usd": round(len(active) * FIXED_STAKE, 2),
             "max_exposure_usd": MAX_TOTAL_EXPOSURE,
             "total_pnl_usd": round(total_pnl, 4),
@@ -432,13 +440,20 @@ def execute_harvest_cycle():
     journal = load_journal()
     reconcile_open_positions(journal)
 
-    # Verifica quantas posições ativas já temos
+    # Verifica quantas posições ativas já temos por plataforma
     active_positions = [p for p in journal.get("positions", []) if p.get("status") == "OPEN"]
-    slots_available = MAX_ACTIVE_POSITIONS - len(active_positions)
-    print(f"-> Posições ativas: {len(active_positions)}/{MAX_ACTIVE_POSITIONS} | Slots disponíveis para alocação: {slots_available}")
+    poly_active = [p for p in active_positions if p.get("platform") == "Polymarket"]
+    kalshi_active = [p for p in active_positions if p.get("platform") == "Kalshi"]
+
+    poly_slots = MAX_POLY_POSITIONS - len(poly_active)
+    kalshi_slots = MAX_KALSHI_POSITIONS - len(kalshi_active)
+    slots_available = poly_slots + kalshi_slots
+
+    print(f"-> Posições ativas: {len(active_positions)}/{MAX_ACTIVE_POSITIONS} (Polymarket: {len(poly_active)}/{MAX_POLY_POSITIONS} | Kalshi: {len(kalshi_active)}/{MAX_KALSHI_POSITIONS})")
+    print(f"-> Slots disponíveis para alocação: {slots_available} (Poly: {poly_slots} | Kalshi: {kalshi_slots})")
 
     if slots_available <= 0:
-        print("[Alocação Pausada] Teto máximo de 5 posições simultâneas atingido. Aguardando liquidação.")
+        print(f"[Alocação Pausada] Teto máximo de {MAX_ACTIVE_POSITIONS} posições ({MAX_POLY_POSITIONS} Poly + {MAX_KALSHI_POSITIONS} Kalshi) atingido. Aguardando liquidação.")
         update_state_file(journal, now_utc, 0, 0)
         return
 
@@ -461,7 +476,13 @@ def execute_harvest_cycle():
         if cand_id in existing_ids:
             continue
 
-        print(f"\n[Screener Jev] Analisando: '{cand['question'][:65]}...' ({cand['platform']})")
+        platform = cand.get("platform", "Polymarket")
+        if platform == "Polymarket" and poly_slots <= 0:
+            continue
+        if platform == "Kalshi" and kalshi_slots <= 0:
+            continue
+
+        print(f"\n[Screener Jev] Analisando: '{cand['question'][:65]}...' ({platform})")
         print(f"   Target: {cand['outcome']} @ ${cand['price']:.3f} | Vencimento: {cand['days_remaining']} dias")
 
         # 2. Auditoria Cognitiva Jev (TypeSafe System 1)
@@ -482,7 +503,7 @@ def execute_harvest_cycle():
             pos_entry = {
                 "id": len(journal.get("positions", [])) + 1,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "platform": cand["platform"],
+                "platform": platform,
                 "market_id": cand_id,
                 "question": cand["question"],
                 "outcome": cand["outcome"],
@@ -511,14 +532,18 @@ def execute_harvest_cycle():
 
             journal["positions"].append(pos_entry)
             existing_ids.add(cand_id)
-            slots_available -= 1
+            if platform == "Polymarket":
+                poly_slots -= 1
+            elif platform == "Kalshi":
+                kalshi_slots -= 1
+            slots_available = poly_slots + kalshi_slots
             save_journal(journal)
         else:
             print(f"   🛡️ [VETO JEV]: Rejeitado para preservação de capital. Risco de cauda ou regras ambíguas.")
 
     # Atualiza arquivo de estado para o Dashboard
     update_state_file(journal, now_utc, len(all_candidates), approved_count)
-    print(f"\n[Ciclo Concluído] Candidatos analisados: {len(all_candidates)} | Aprovados: {approved_count} | Slots restantes: {slots_available}")
+    print(f"\n[Ciclo Concluído] Candidatos analisados: {len(all_candidates)} | Aprovados: {approved_count} | Slots restantes: {slots_available} (Poly: {poly_slots} | Kalshi: {kalshi_slots})")
 
 
 # ===================== DAEMON LOOP PRINCIPAL =====================

@@ -37,16 +37,16 @@ class TestDesk6YieldHarvester(unittest.TestCase):
         self.assertIn("stats", j)
         self.assertIn("positions", j)
         self.assertEqual(j["metadata"]["max_stake"], 1.0)
-        self.assertEqual(j["metadata"]["max_positions"], 5)
+        self.assertEqual(j["metadata"]["max_positions"], 10)
         self.assertTrue(os.path.exists(self.test_journal))
 
     def test_02_state_file_update(self):
         """Testa atualização e persistência do arquivo de estado para o dashboard."""
         journal = {
             "positions": [
-                {"status": "OPEN", "stake": 1.0, "pnl": 0.0},
-                {"status": "OPEN", "stake": 1.0, "pnl": 0.0},
-                {"status": "WON", "stake": 1.0, "pnl": 0.02}
+                {"status": "OPEN", "stake": 1.0, "pnl": 0.0, "platform": "Polymarket"},
+                {"status": "OPEN", "stake": 1.0, "pnl": 0.0, "platform": "Kalshi"},
+                {"status": "WON", "stake": 1.0, "pnl": 0.02, "platform": "Polymarket"}
             ]
         }
         d6.update_state_file(journal, "2026-09-24 22:00:00 UTC", 10, 2)
@@ -57,24 +57,40 @@ class TestDesk6YieldHarvester(unittest.TestCase):
         
         self.assertEqual(st["desk"], "Desk 6")
         self.assertEqual(st["active_positions_count"], 2)
-        self.assertEqual(st["max_active_positions"], 5)
+        self.assertEqual(st["max_active_positions"], 10)
+        self.assertEqual(st["poly_active_count"], 1)
+        self.assertEqual(st["max_poly_positions"], 5)
+        self.assertEqual(st["kalshi_active_count"], 1)
+        self.assertEqual(st["max_kalshi_positions"], 5)
         self.assertEqual(st["current_exposure_usd"], 2.0)
-        self.assertEqual(st["max_exposure_usd"], 5.0)
+        self.assertEqual(st["max_exposure_usd"], 10.0)
         self.assertEqual(st["total_pnl_usd"], 0.02)
         self.assertEqual(st["last_candidates_scanned"], 10)
         self.assertEqual(st["last_candidates_approved"], 2)
 
     def test_03_position_cap_limit(self):
-        """Testa se o limite máximo de 5 posições impede novas compras."""
+        """Testa se o limite máximo de 10 posições (5 Poly e 5 Kalshi) é respeitado."""
         journal = {
             "positions": [
-                {"id": i, "status": "OPEN", "stake": 1.0, "market_id": f"m_{i}"}
+                {"id": i, "status": "OPEN", "stake": 1.0, "platform": "Polymarket", "market_id": f"m_poly_{i}"}
+                for i in range(5)
+            ] + [
+                {"id": i+5, "status": "OPEN", "stake": 1.0, "platform": "Kalshi", "market_id": f"m_kalshi_{i}"}
                 for i in range(5)
             ]
         }
         active = [p for p in journal["positions"] if p.get("status") == "OPEN"]
-        slots = d6.MAX_ACTIVE_POSITIONS - len(active)
-        self.assertEqual(slots, 0)
+        poly_active = [p for p in active if p.get("platform") == "Polymarket"]
+        kalshi_active = [p for p in active if p.get("platform") == "Kalshi"]
+
+        poly_slots = d6.MAX_POLY_POSITIONS - len(poly_active)
+        kalshi_slots = d6.MAX_KALSHI_POSITIONS - len(kalshi_active)
+        total_slots = poly_slots + kalshi_slots
+
+        self.assertEqual(len(active), 10)
+        self.assertEqual(poly_slots, 0)
+        self.assertEqual(kalshi_slots, 0)
+        self.assertEqual(total_slots, 0)
 
     def test_04_reconcile_open_positions_won(self):
         """Testa a reconciliação e cálculo de P&L quando uma posição vence."""
