@@ -203,6 +203,10 @@ class KalshiClient:
         """Cancela ordem oficial V2 na Kalshi"""
         return self.request("DELETE", f"/portfolio/events/orders/{order_id}?exchange_index={exchange_index}", auth_required=True)
 
+    def get_order_status(self, order_id: str) -> Optional[dict]:
+        """Consulta o status de uma ordem oficial na Kalshi"""
+        return self.request("GET", f"/portfolio/events/orders/{order_id}", auth_required=True)
+
 
 
 # ===================== ENGINE DE PREÇO SPOT (Binance Ref) =====================
@@ -424,9 +428,34 @@ class KalshiTrader15M:
                             print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA (TAKE-PROFIT) NA KALSHI]:")
                             print(f"   Ticker: {ticker} | Lado: {target_side.upper()} | Preço Alvo: {early_sell_price}¢")
                             sell_res = self.kalshi_client.place_order(ticker, target_side, count=1, price_cents=early_sell_price, action="sell")
-                            if sell_res and ("order" in sell_res or "order_id" in sell_res):
-                                sell_order_id = sell_res.get("order", {}).get("order_id") or sell_res.get("order_id", "SUBMITTED")
-                                print(f"   -> Ordem de Venda Enviada com Sucesso! Order ID: {sell_order_id}")
+                            if isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res):
+                                order_data = sell_res.get("order", {}) if isinstance(sell_res.get("order"), dict) else sell_res
+                                sell_order_id = order_data.get("order_id", "SUBMITTED")
+                                status = str(order_data.get("status", "resting")).lower()
+                                print(f"   -> Ordem de Venda Enviada! Order ID: {sell_order_id} | Status: {status}")
+
+                                # Se a ordem ainda estiver descansando (resting), aguarda preenchimento no livro
+                                if status in ("resting", "pending"):
+                                    print("   -> Aguardando execução (fill) da ordem no livro Kalshi...")
+                                    for _ in range(4):
+                                        time.sleep(5)
+                                        chk = self.kalshi_client.get_order_status(sell_order_id)
+                                        if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
+                                            cur_st = str(chk["order"].get("status", "")).lower()
+                                            if cur_st in ("executed", "filled"):
+                                                status = "filled"
+                                                print("   -> Ordem Kalshi PREENCHIDA (Filled) com sucesso!")
+                                                break
+
+                                if status in ("executed", "filled"):
+                                    sell_ok = True
+                                else:
+                                    print(f"   [⚠️ VENDA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
+                                    try:
+                                        self.kalshi_client.cancel_order(sell_order_id)
+                                    except Exception:
+                                        pass
+                                    sell_ok = False
                             else:
                                 print(f"   [❌ FALHA NA VENDA KALSHI]: {sell_res}. Mantendo posição até vencimento final.")
                                 sell_ok = False

@@ -345,6 +345,7 @@ class LiveTrader:
         self.session_wins = 0
         self.session_losses = 0
         self.cumulative_cycle_pnl = 0.0
+        self.pending_unredeemed_payouts = 0.0
 
         self.total_spent = 0.0
         self.total_pnl = 0.0
@@ -1498,12 +1499,33 @@ class LiveTrader:
 
         self.cumulative_cycle_pnl = round(self.cumulative_cycle_pnl + cycle_pnl, 2)
 
+        # Se houve payout ganho na expiração (posição segurada até o fim, não vendida antecipadamente via TP/SL),
+        # as cotas vencedoras na carteira Safe aguardam resgate (redeemPositions) para se tornarem USDC colateral.
+        unredeemed_this_cycle = 0.0
+        if not sold_early:
+            if has_primary and (target_side == winner):
+                unredeemed_this_cycle += payout_primary
+            if hedged and (hedge_side == winner):
+                unredeemed_this_cycle += payout_hedge
+            if scour_executed and (scour_side == winner):
+                unredeemed_this_cycle += payout_scour
+        if unredeemed_this_cycle > 0:
+            self.pending_unredeemed_payouts = round(self.pending_unredeemed_payouts + unredeemed_this_cycle, 2)
+            print(f"       [RECONCILIAÇÃO ON-CHAIN]: +${unredeemed_this_cycle:.2f} em cotas vencedoras aguardando resgate/redeem para USDC.")
+
         # Aguarda brevemente para refletir saldo no relayer
         if total_payout > 0 and self.execution_mode != "paper":
             time.sleep(3.0)
+        previous_balance = self.current_balance
         new_balance = self.get_usdc_balance()
         if new_balance < 0:
             new_balance = self.current_balance
+
+        # Se o saldo USDC aumentou na carteira (redeem processado pelo relayer ou manual), abate dos pendentes
+        usdc_gain = round(new_balance - previous_balance, 2)
+        if usdc_gain > 0 and self.pending_unredeemed_payouts > 0:
+            self.pending_unredeemed_payouts = max(0.0, round(self.pending_unredeemed_payouts - usdc_gain, 2))
+
         self.current_balance = new_balance
 
         # Atualizacao do P&L Real da Sessao medido exclusivamente na carteira (Truth Source)
@@ -1511,19 +1533,23 @@ class LiveTrader:
         self.session_pnl = wallet_session_delta
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
 
-        # Verificacao de paridade contabil REAL (Soma dos Trades vs Delta Real na Carteira Safe)
+        # Verificacao de paridade contabil REAL (Soma dos Trades vs Delta Real na Carteira Safe + Cotas Pendentes)
         if self.execution_mode != "paper":
+            # Saldo efetivo reconciliado: variacao de USDC em carteira + valor das cotas vencedoras aguardando redeem
+            effective_wallet_delta = round(wallet_session_delta + self.pending_unredeemed_payouts, 2)
             expected_balance_by_trades = round(self.session_initial_balance + self.cumulative_cycle_pnl, 2)
-            parity_gap = abs(wallet_session_delta - self.cumulative_cycle_pnl)
+            parity_gap = abs(effective_wallet_delta - self.cumulative_cycle_pnl)
             if parity_gap > 1.50:
                 print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada!")
                 print(f"       Resultado Teórico dos Trades: {self.cumulative_cycle_pnl:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
-                print(f"       Variação Real na Carteira Safe: {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
-                print("       -> Preservando a verdade da carteira on-chain para métricas e Circuit Breakers.")
+                print(f"       Variação USDC na Carteira:    {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
+                print(f"       Cotas Pendentes de Resgate:   +${self.pending_unredeemed_payouts:.2f} USDC")
+                print(f"       Delta Efetivo Reconciliado:   {effective_wallet_delta:+.2f} USDC")
                 if parity_gap > 3.50:
                     print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
                     self.is_halted = True
                     self.halt_reason = f"Divergência contábil de carteira (${parity_gap:.2f})"
+                    return
 
         self.traded_windows.add(window_ts)
 

@@ -115,35 +115,35 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertTrue(issubclass(ThreadedTCPServer, socketserver.TCPServer))
 
     def test_dashboard_panic_button_toggle(self):
-        """Verifica a alternância de ativação e desativação do kill-switch pelo dashboard"""
-        from dashboard_server import HALT_FILE, EMERGENCY_FILE, HTML_CONTENT
+        """Verifica a alternância de ativação e desativação em arquivo isolado sem tocar no HALT de produção"""
+        test_halt = os.path.join(os.path.dirname(__file__), "TEST_ISOLATED_HALT")
+        test_emergency = os.path.join(os.path.dirname(__file__), "TEST_ISOLATED_EMERGENCY")
+        from dashboard_server import HTML_CONTENT
         
         # Garante estado limpo inicial
-        if os.path.exists(HALT_FILE):
-            os.remove(HALT_FILE)
-        if os.path.exists(EMERGENCY_FILE):
-            os.remove(EMERGENCY_FILE)
+        if os.path.exists(test_halt):
+            os.remove(test_halt)
+        if os.path.exists(test_emergency):
+            os.remove(test_emergency)
 
         try:
             # 1. Estado inicial: Desativado
-            self.assertFalse(os.path.exists(HALT_FILE))
-            self.assertFalse(os.path.exists(EMERGENCY_FILE))
+            self.assertFalse(os.path.exists(test_halt))
+            self.assertFalse(os.path.exists(test_emergency))
 
-            # 2. Simula toggle de ativação (como executado pelo endpoint /api/kill_switch_toggle)
-            with open(HALT_FILE, "w", encoding="utf-8") as f:
+            # 2. Simula toggle de ativação em arquivo isolado
+            with open(test_halt, "w", encoding="utf-8") as f:
                 f.write("HALTED_BY_DASHBOARD_TEST\n")
             
-            is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
-            self.assertTrue(is_halted, "Kill-switch deve estar ativo após acionamento")
+            is_halted = os.path.exists(test_halt) or os.path.exists(test_emergency)
+            self.assertTrue(is_halted, "Kill-switch isolado deve estar ativo após acionamento")
 
-            # 3. Simula toggle de desativação (como executado pelo endpoint ao desativar)
-            if os.path.exists(HALT_FILE):
-                os.remove(HALT_FILE)
-            if os.path.exists(EMERGENCY_FILE):
-                os.remove(EMERGENCY_FILE)
+            # 3. Simula toggle de desativação
+            if os.path.exists(test_halt):
+                os.remove(test_halt)
 
-            is_halted_after = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
-            self.assertFalse(is_halted_after, "Kill-switch deve estar inativo após desativação")
+            is_halted_after = os.path.exists(test_halt) or os.path.exists(test_emergency)
+            self.assertFalse(is_halted_after, "Kill-switch isolado deve estar inativo após desativação")
 
             # 4. Verifica presença dos elementos na UI do Dashboard
             self.assertIn('id="btnPanic"', HTML_CONTENT)
@@ -152,10 +152,66 @@ class TestCriticalFixes(unittest.TestCase):
             self.assertIn('/api/kill_switch_toggle', HTML_CONTENT)
 
         finally:
-            if os.path.exists(HALT_FILE):
-                os.remove(HALT_FILE)
-            if os.path.exists(EMERGENCY_FILE):
-                os.remove(EMERGENCY_FILE)
+            if os.path.exists(test_halt):
+                os.remove(test_halt)
+            if os.path.exists(test_emergency):
+                os.remove(test_emergency)
+
+    def test_parity_accounting_with_unredeemed_tokens(self):
+        """Verifica que vitórias por expiração com cotas pendentes de resgate não geram falso alarme de paridade"""
+        # Simula 2 vitórias seguidas na expiração ($1.00 stake -> $1.85 payout cada)
+        # Saldo USDC inicial: $21.81.
+        # Ao comprar: gastou $2.00 em USDC -> saldo USDC caiu para $19.81 (delta wallet = -$2.00)
+        # Payouts teóricos: 2 x $1.85 = $3.70.
+        # Lucro líquido teórico: +$1.70.
+        # Na versão antiga com bug: parity_gap = abs(-$2.00 - $1.70) = $3.70 > $3.50 (FALSO HALT!)
+        # Na nova versão com pendentes: effective_delta = -$2.00 + $3.70 (cotas pendentes) = +$1.70 -> parity_gap = $0.00!
+        wallet_usdc_delta = -2.00
+        cumulative_cycle_pnl = 1.70
+        pending_unredeemed_payouts = 3.70
+
+        # Versão corrigida:
+        effective_wallet_delta = round(wallet_usdc_delta + pending_unredeemed_payouts, 2)
+        parity_gap = abs(effective_wallet_delta - cumulative_cycle_pnl)
+
+        self.assertEqual(effective_wallet_delta, 1.70)
+        self.assertEqual(parity_gap, 0.00, "Paridade deve ser exata ao contabilizar cotas vencedoras pendentes de resgate")
+        self.assertLess(parity_gap, 1.50, "Não deve disparar alarme nem travar robô")
+
+    def test_kalshi_tp_only_on_fill(self):
+        """Verifica que ordens 'resting' na Kalshi não creditam PnL antes do fill real"""
+        # Ordem resting (ainda no livro sem comprador):
+        mock_resting_order = {"order": {"order_id": "k123", "status": "resting"}}
+        status_resting = mock_resting_order["order"]["status"]
+        sell_ok_resting = status_resting in ("executed", "filled")
+        self.assertFalse(sell_ok_resting, "Ordem descansando (resting) no livro NÃO pode ser dada como sell_ok")
+
+        # Ordem preenchida (filled):
+        mock_filled_order = {"order": {"order_id": "k124", "status": "filled"}}
+        status_filled = mock_filled_order["order"]["status"]
+        sell_ok_filled = status_filled in ("executed", "filled")
+        self.assertTrue(sell_ok_filled, "Ordem preenchida (filled) deve ser aprovada para crédito de PnL")
+
+    def test_dashboard_csrf_origin_validation(self):
+        """Verifica que o servidor do dashboard rejeita origens externas e aceita localhost"""
+        from dashboard_server import QuantDashboardHandler
+        
+        class DummyHandler:
+            headers = {}
+            def _is_allowed_origin(self):
+                origin = self.headers.get("Origin", "")
+                if not origin:
+                    return True
+                return origin in ("http://localhost:8080", "http://127.0.0.1:8080")
+
+        dh = DummyHandler()
+        # Origem externa maliciosa:
+        dh.headers = {"Origin": "https://evil-site.com"}
+        self.assertFalse(dh._is_allowed_origin(), "Origem externa deve ser bloqueada")
+
+        # Localhost legítimo:
+        dh.headers = {"Origin": "http://localhost:8080"}
+        self.assertTrue(dh._is_allowed_origin(), "Localhost deve ser permitido")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

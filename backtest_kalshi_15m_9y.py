@@ -291,7 +291,7 @@ def run_jev_kalshi_analysis(r: dict):
     try:
         from typesafe_sdk import TypeSafeClient, Choice, Score, Noul
         from dotenv import load_dotenv; load_dotenv()
-os.environ["TYPESAFE_API_KEY"] = os.getenv("JEV_API_KEY", os.getenv("TYPESAFE_API_KEY", ""))
+        os.environ["TYPESAFE_API_KEY"] = os.getenv("JEV_API_KEY", os.getenv("TYPESAFE_API_KEY", ""))
         client = TypeSafeClient()
 
         state = f"""

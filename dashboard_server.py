@@ -2203,14 +2203,38 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass # Mantém console limpo
 
+    def _is_allowed_origin(self) -> bool:
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return True
+        return origin in ("http://localhost:8080", "http://127.0.0.1:8080")
+
     def do_OPTIONS(self):
+        origin = self.headers.get("Origin", "")
+        allowed_origin = origin if self._is_allowed_origin() and origin else "http://127.0.0.1:8080"
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", allowed_origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_POST(self):
+        # Proteção rigorosa contra CSRF/CORS externo
+        if not self._is_allowed_origin():
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error": "Forbidden: Cross-origin request rejected"}')
+            return
+
+        host = self.headers.get("Host", "")
+        if host and not any(host.startswith(h) for h in ("localhost:8080", "127.0.0.1:8080")):
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error": "Forbidden: Invalid Host header"}')
+            return
+
         path_clean = self.path.split('?')[0].rstrip('/')
         if path_clean == "/api/kill_switch_toggle":
             is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
@@ -2241,9 +2265,11 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
                 new_state = True
                 msg = "KILL-SWITCH ATIVADO: Todos os bots (BTC, SOL, Kalshi) foram congelados imediatamente."
 
+            origin = self.headers.get("Origin", "")
+            allowed_origin = origin if origin in ("http://localhost:8080", "http://127.0.0.1:8080") else "http://127.0.0.1:8080"
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
             self.wfile.write(json.dumps({
@@ -2266,9 +2292,11 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(HTML_CONTENT.encode("utf-8"))
         elif self.path.startswith("/api/kill_switch_status"):
             is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+            origin = self.headers.get("Origin", "")
+            allowed_origin = origin if origin in ("http://localhost:8080", "http://127.0.0.1:8080") else "http://127.0.0.1:8080"
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
             self.wfile.write(json.dumps({
@@ -2276,9 +2304,11 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
                 "timestamp": time.time()
             }).encode("utf-8"))
         elif self.path.startswith("/api/dashboard_state"):
+            origin = self.headers.get("Origin", "")
+            allowed_origin = origin if origin in ("http://localhost:8080", "http://127.0.0.1:8080") else "http://127.0.0.1:8080"
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
 

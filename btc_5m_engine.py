@@ -64,18 +64,20 @@ class BTC5mEngine:
         return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
     def calculate_fair_value(self, spot: float, strike: float, seconds_left: int) -> float:
-        """Calcula a probabilidade neutra ao risco N(d2) para o token UP (Call Binária)"""
+        """Calcula a probabilidade neutra ao risco N(d2) calibrada para horizontes intra-vela de 5m"""
         if spot <= 0 or strike <= 0:
             return 0.50
         if seconds_left <= 0:
             return 1.0 if spot >= strike else 0.0
         
+        # Calibração intra-vela: volatilidade de microestrutura para 300s (equivalente a ~32% anualizada em alta frequência)
+        effective_vol = 0.32
         tau = max(1.0, float(seconds_left)) / (365.25 * 24 * 3600)
-        sigma_sqrt_tau = self.annualized_vol * math.sqrt(tau)
+        sigma_sqrt_tau = effective_vol * math.sqrt(tau)
         if sigma_sqrt_tau <= 1e-9:
             return 1.0 if spot >= strike else 0.0
             
-        d2 = (math.log(spot / strike) - 0.5 * (self.annualized_vol ** 2) * tau) / sigma_sqrt_tau
+        d2 = (math.log(spot / strike) - 0.5 * (effective_vol ** 2) * tau) / sigma_sqrt_tau
         # Limita entre 0.01 e 0.99 para evitar probabilidades estritas
         prob = self.normal_cdf(d2)
         return max(0.01, min(0.99, prob))
