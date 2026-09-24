@@ -41,15 +41,20 @@ try:
     sig = cycle.get('signal', {})
     print(f"Sinal do Sniper (135s): {sig.get('action', 'NENHUM')} | Racional: {sig.get('rationale', 'Aguardando')}")
 
-    print("\n--- DESK 2: POLYMARKET SOL 5M [PAPER] ---")
+    sol_mode = sol.get('mode', 'LIVE')
+    print(f"\n--- DESK 2: POLYMARKET SOL 5M [{sol_mode}] ---")
     print(f"Mercado: {sol.get('market_title', 'sol-updown-5m')} | Restam: {sol.get('seconds_left')}s")
     print(f"Spot SOL: ${float(sol.get('spot', 0)):.2f} | Delta: {float(sol.get('delta', 0)):+.3f} USD (Deadband: {sol.get('deadband')} USD)")
     print(f"CLOB L2: Bid ${float(sol.get('clob_bid', 0)):.2f} | Ask ${float(sol.get('clob_ask', 0)):.2f} | Spread: ${float(sol.get('clob_spread', 0)):.3f}")
     print(f"Status SOL: {sol.get('status_signal')}")
 
-    print("\n--- DESK 3: KALSHI BTC 15M [PAPER / CONEXÃO CFTC] ---")
+    kb = data.get("kalshi_balances", {})
+    k_shard2 = kb.get("shard_2_usd", 9.05)
+    k_total = kb.get("total_usd", 10.36)
+    print(f"\n--- DESK 3: KALSHI BTC 15M [LIVE / CONEXÃO CFTC] ---")
     print(f"Ticker: {kalshi.get('ticker', 'KXBTC15M')} | Restam: {kalshi.get('seconds_left')}s")
     print(f"Strike: ${float(kalshi.get('strike', 0)):,.2f} | Spot: ${float(kalshi.get('spot', 0)):,.2f} | Delta: {float(kalshi.get('delta', 0)):+.2f} USD")
+    print(f"Saldo Shard 2: ${k_shard2:.2f} USD | Total CFTC: ${k_total:.2f} USD")
     print(f"Status Kalshi: {kalshi.get('status_signal')}")
 
 except Exception as e:
@@ -61,10 +66,10 @@ print("=" * 80)
 
 log_dir = r"C:\Users\rafae\.gemini\antigravity\brain\c125241d-a48c-4ba7-aab4-bba800620ab2\.system_generated\tasks"
 task_map = {
-    "task-10139": "Desk 1 (live_trader_5m - BTC LIVE)",
-    "task-10141": "Desk 2 (sol_trader_5m - SOL)",
-    "task-10143": "Desk 3 (kalshi_trader_15m - Kalshi)",
-    "task-10286": "Dashboard Server (localhost:8080)"
+    "task-10467": "Desk 1 (live_trader_5m - BTC LIVE)",
+    "task-10742": "Desk 2 (sol_trader_5m - SOL LIVE)",
+    "task-10744": "Desk 3 (kalshi_trader_15m - Kalshi LIVE)",
+    "task-10740": "Dashboard Server (localhost:8080)"
 }
 
 for task_id, desc in task_map.items():
