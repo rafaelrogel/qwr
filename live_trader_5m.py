@@ -87,6 +87,27 @@ def load_env_config() -> Dict[str, str]:
                     cfg[k.strip()] = v.strip()
     return cfg
 
+def get_shared_wallet_sol_impact() -> float:
+    """
+    Calcula o impacto financeiro acumulado (lucro/prejuízo líquido real) das operações
+    do Desk 2 (SOL) na carteira Polygon Safe compartilhada, para isolar a contabilidade do Desk 1.
+    """
+    sol_journal_path = os.path.join(BASE_DIR, "sol_trading_journal.json")
+    if not os.path.exists(sol_journal_path):
+        return 0.0
+    try:
+        with open(sol_journal_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        mode = str(data.get("mode", "")).upper()
+        # Se SOL esteve em LIVE, soma o PnL de todos os trades live
+        sol_pnl = 0.0
+        if "LIVE" in mode:
+            for t in data.get("trades", []):
+                sol_pnl += float(t.get("pnl", 0.0))
+        return round(sol_pnl, 2)
+    except Exception:
+        return 0.0
+
 def _atomic_json_write(path: str, data: dict):
     """Grava JSON de forma atomica usando arquivo temporario para evitar corrupcao em caso de queda"""
     tmp_path = path + ".tmp"
@@ -403,7 +424,10 @@ class LiveTrader:
                     self.wins = data.get("wins", 0)
                     self.losses = data.get("losses", 0)
                     self.cycles_executed = data.get("cycles_executed", 0)
-                    self.recent_winners = [r["winner"] for r in data.get("trades", [])[-5:] if r.get("winner")]
+                    self.pending_unredeemed_payouts = float(data.get("pending_unredeemed_payouts", 0.0))
+                    trades = data.get("trades", [])
+                    self.cumulative_cycle_pnl = round(sum(float(t.get("cycle_pnl", 0.0)) for t in trades), 2)
+                    self.recent_winners = [r["winner"] for r in trades[-5:] if r.get("winner")]
             except Exception as ej:
                 print(f"[ALERTA CRÍTICO] Falha ao ler {JOURNAL_JSON}: {ej}. Criando backup de seguranca.")
                 try:
@@ -451,9 +475,17 @@ class LiveTrader:
 
             # Atualiza saldo real da carteira
             bal = self.get_usdc_balance()
-            self.session_initial_balance = bal
+            if os.path.exists(JOURNAL_JSON):
+                try:
+                    with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    self.session_initial_balance = float(data.get("session_initial_balance", bal))
+                except Exception:
+                    self.session_initial_balance = bal
+            else:
+                self.session_initial_balance = bal
             self.current_balance = bal
-            print(f"   -> Saldo Real em Carteira: ${bal:.2f} USDC (Base de Risco da Sessao Chainlink)")
+            print(f"   -> Saldo Real em Carteira: ${bal:.2f} USDC (Base de Risco Inicial da Sessao: ${self.session_initial_balance:.2f})")
         except Exception as e:
             print(f"[ERRO ao autenticar ClobClient]: {e}")
             self.client = None
@@ -1535,16 +1567,21 @@ class LiveTrader:
 
         # Verificacao de paridade contabil REAL (Soma dos Trades vs Delta Real na Carteira Safe + Cotas Pendentes)
         if self.execution_mode != "paper":
-            # Saldo efetivo reconciliado: variacao de USDC em carteira + valor das cotas vencedoras aguardando redeem
-            effective_wallet_delta = round(wallet_session_delta + self.pending_unredeemed_payouts, 2)
+            sol_impact = get_shared_wallet_sol_impact()
+            # Desconta o impacto de operações do Desk 2 (SOL) que utilizam a mesma carteira Safe compartilhada
+            btc_wallet_session_delta = round(wallet_session_delta - sol_impact, 2)
+            # Saldo efetivo reconciliado: variacao de USDC em carteira atribuível ao BTC + valor das cotas vencedoras aguardando redeem
+            effective_wallet_delta = round(btc_wallet_session_delta + self.pending_unredeemed_payouts, 2)
             expected_balance_by_trades = round(self.session_initial_balance + self.cumulative_cycle_pnl, 2)
             parity_gap = abs(effective_wallet_delta - self.cumulative_cycle_pnl)
             if parity_gap > 1.50:
                 print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada!")
-                print(f"       Resultado Teórico dos Trades: {self.cumulative_cycle_pnl:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
-                print(f"       Variação USDC na Carteira:    {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
-                print(f"       Cotas Pendentes de Resgate:   +${self.pending_unredeemed_payouts:.2f} USDC")
-                print(f"       Delta Efetivo Reconciliado:   {effective_wallet_delta:+.2f} USDC")
+                print(f"       Resultado Teórico dos Trades BTC: {self.cumulative_cycle_pnl:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
+                print(f"       Variação USDC Total na Carteira:  {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
+                if abs(sol_impact) > 0.001:
+                    print(f"       Impacto Isolado Desk 2 (SOL):     {sol_impact:+.2f} USDC")
+                print(f"       Cotas Pendentes de Resgate:       +${self.pending_unredeemed_payouts:.2f} USDC")
+                print(f"       Delta Efetivo Reconciliado BTC:   {effective_wallet_delta:+.2f} USDC")
                 if parity_gap > 3.50:
                     print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
                     self.is_halted = True
@@ -1649,6 +1686,7 @@ class LiveTrader:
                 "session_pnl": self.session_pnl,
                 "total_pnl_vs_deposit": total_pnl_vs_deposit,
                 "current_balance": new_balance,
+                "pending_unredeemed_payouts": self.pending_unredeemed_payouts,
                 "last_updated": datetime.now().isoformat(),
                 "trades": []
             }

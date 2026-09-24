@@ -207,6 +207,23 @@ class KalshiClient:
         """Consulta o status de uma ordem oficial na Kalshi"""
         return self.request("GET", f"/portfolio/events/orders/{order_id}", auth_required=True)
 
+    def get_market_settlement(self, ticker: str, max_retries: int = 5) -> Optional[dict]:
+        """Consulta o resultado oficial de liquidação na Kalshi API (status, result)"""
+        for _ in range(max_retries):
+            res = self.request("GET", f"/markets/{ticker}")
+            if res and "market" in res:
+                m = res["market"]
+                status = str(m.get("status", "")).lower()
+                if status in ("settled", "finalized", "closed"):
+                    return {
+                        "status": status,
+                        "result": str(m.get("result", "")).lower(), # 'yes' ou 'no'
+                        "settlement_timer": m.get("settlement_timer"),
+                        "settlement_value": m.get("settlement_value")
+                    }
+            time.sleep(3)
+        return None
+
 
 
 # ===================== ENGINE DE PREÇO SPOT (Binance Ref) =====================
@@ -259,6 +276,7 @@ class KalshiTrader15M:
         self.kalshi_client = self.client  # Garantia de compatibilidade de atributos
         self.mode = EXECUTION_MODE
         self.balance = 35.00 # fallback padrão
+        self.current_open_position = None
         if self.mode == "LIVE":
             b_info = self.client.get_real_balance()
             self.balance = b_info.get("shard2_balance") or b_info.get("total_balance") or 9.05
@@ -269,6 +287,7 @@ class KalshiTrader15M:
             try:
                 with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    self.current_open_position = data.get("open_position")
                     if self.mode != "LIVE":
                         self.balance = data.get("current_balance", self.balance)
                     else:
@@ -277,6 +296,30 @@ class KalshiTrader15M:
                         real_s2 = b_info.get("shard2_balance")
                         if real_s2 and real_s2 > 0:
                             self.balance = real_s2
+            except Exception:
+                pass
+
+    def save_open_position(self, pos_data: dict):
+        self.current_open_position = pos_data
+        if os.path.exists(JOURNAL_JSON):
+            try:
+                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                data["open_position"] = pos_data
+                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+            except Exception:
+                pass
+
+    def clear_open_position(self):
+        self.current_open_position = None
+        if os.path.exists(JOURNAL_JSON):
+            try:
+                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                data["open_position"] = None
+                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
             except Exception:
                 pass
 
@@ -409,10 +452,56 @@ class KalshiTrader15M:
                     print("   [!] Falha na execução da ordem na Kalshi. Abortando entrada para proteger capital.")
                     time.sleep(max(1, remaining_sec))
                     return
-                real_order_id = res.get("order_id") or res.get("order", {}).get("order_id", "")
-                print(f"   [✅ CONFIRMAÇÃO DE EXECUÇÃO ON-EXCHANGE]: Order ID: {real_order_id}")
+                order_info = res.get("order", {}) if isinstance(res.get("order"), dict) else res
+                real_order_id = order_info.get("order_id") or res.get("order_id", "")
+                status = str(order_info.get("status", "resting")).lower()
+                print(f"   [⚡ STATUS INICIAL DA COMPRA]: ID: {real_order_id} | Status: {status}")
+
+                # Verificação rigorosa de execução (Fill-or-Cancel) no BUY
+                if status in ("resting", "pending"):
+                    print("   -> Aguardando confirmação de execução (fill) da compra no livro...")
+                    for _ in range(4):
+                        time.sleep(4)
+                        chk = self.client.get_order_status(real_order_id)
+                        if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
+                            cur_st = str(chk["order"].get("status", "")).lower()
+                            if cur_st in ("executed", "filled"):
+                                status = "filled"
+                                print("   -> Compra Kalshi PREENCHIDA (Filled) com sucesso!")
+                                break
+
+                if status not in ("executed", "filled"):
+                    print(f"   [⚠️ COMPRA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
+                    try:
+                        self.client.cancel_order(real_order_id)
+                    except Exception:
+                        pass
+                    time.sleep(max(1, remaining_sec))
+                    return
+
+                print(f"   [✅ COMPRA CONFIRMADA ON-EXCHANGE]: 1 contrato de {target_side.upper()} @ {entry_price}¢ | Order ID: {real_order_id}")
+                self.save_open_position({
+                    "ticker": ticker,
+                    "target_side": target_side,
+                    "count": 1,
+                    "entry_price": entry_price,
+                    "stake": stake,
+                    "order_id": real_order_id,
+                    "strike_price": strike_price,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
             else:
                 print(f"   [SIMULAÇÃO PAPER]: 1 contrato de {target_side.upper()} executado a {entry_price}¢ com sucesso!")
+                self.save_open_position({
+                    "ticker": ticker,
+                    "target_side": target_side,
+                    "count": 1,
+                    "entry_price": entry_price,
+                    "stake": stake,
+                    "order_id": "paper-sim",
+                    "strike_price": strike_price,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
             # 5. Monitoramento de Take-Profit até o fim dos 900s
             print(f"[🎯 MONITORAMENTO KALSHI]: Acompanhando Take-Profit (>= {TAKE_PROFIT_CENTS}¢) até os 900s...")
@@ -501,17 +590,36 @@ class KalshiTrader15M:
                                 "cycle_pnl": round(cycle_pnl, 4),
                                 "balance": round(self.balance, 4)
                             })
+                            self.clear_open_position()
                             time.sleep(max(1, 900 - now_sec))
                             return
 
                 time.sleep(15)
 
-            # 6. Liquidação no Fechamento da Vela (se não saiu no Take-Profit)
+            # 6. Liquidação Oficial no Fechamento da Vela (se não saiu no Take-Profit)
             if not sold_early:
-                time.sleep(5)
-                final_spot = get_binance_btc_spot() or spot_now
-                is_win = (final_spot >= strike_price) if target_side == "yes" else (final_spot < strike_price)
-                winner = "UP" if final_spot >= strike_price else "DOWN"
+                time.sleep(10)
+                official_winner = None
+                winner_source = "BINANCE_SPOT_ESTIMATED"
+
+                if self.mode == "LIVE":
+                    print(f"   -> Consultando oráculo oficial de liquidação na Kalshi API ({ticker})...")
+                    settle_info = self.client.get_market_settlement(ticker, max_retries=6)
+                    if settle_info and settle_info.get("result"):
+                        k_res = settle_info["result"].lower()  # 'yes' ou 'no'
+                        official_winner = "UP" if k_res == "yes" else "DOWN"
+                        winner_source = "KALSHI_OFFICIAL_ORACLE"
+                        is_win = (target_side.lower() == k_res)
+                        print(f"   [🏛️ ORÁCULO OFICIAL KALSHI]: Resultado: {k_res.upper()} | Vencedor: {official_winner}")
+
+                if official_winner is None:
+                    final_spot = get_binance_btc_spot() or spot_now
+                    is_win = (final_spot >= strike_price) if target_side == "yes" else (final_spot < strike_price)
+                    winner = "UP" if final_spot >= strike_price else "DOWN"
+                else:
+                    winner = official_winner
+                    final_spot = get_binance_btc_spot() or spot_now
+
                 payout = 1.00 if is_win else 0.00
                 cycle_pnl = payout - stake
                 if self.mode == "LIVE":
@@ -525,7 +633,7 @@ class KalshiTrader15M:
                 res_str = "VITÓRIA" if is_win else "DERROTA"
 
                 print(f"\n[🏁 APURAÇÃO FINAL KALSHI - JANELA CONCLUÍDA]:")
-                print(f"   Strike (K): ${strike_price:,.2f} | Final Spot: ${final_spot:,.2f} | Vencedor: {winner}")
+                print(f"   Strike (K): ${strike_price:,.2f} | Final Spot: ${final_spot:,.2f} | Vencedor: {winner} ({winner_source})")
                 print(f"   Resultado: {res_str} | Payout: ${payout:.2f} | P&L Ciclo: {cycle_pnl:+.2f} USD")
                 print(f"   Saldo Atualizado: ${self.balance:,.2f} USD")
 
@@ -539,12 +647,14 @@ class KalshiTrader15M:
                     "entry_price": entry_price,
                     "target_side": target_side.upper(),
                     "winner": winner,
+                    "winner_source": winner_source,
                     "result": res_str,
                     "sold_early": False,
                     "payout": payout,
                     "cycle_pnl": round(cycle_pnl, 4),
                     "balance": round(self.balance, 4)
                 })
+                self.clear_open_position()
 
     def save_trade(self, trade_data: dict):
         journal = {"current_balance": round(self.balance, 4), "trades": []}

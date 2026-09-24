@@ -2179,7 +2179,13 @@ HTML_CONTENT = """<!DOCTYPE html>
             try {
                 const btn = document.getElementById('btnPanic');
                 if (btn) btn.innerText = "⏳ PROCESSANDO...";
-                const resp = await fetch('/api/kill_switch_toggle', { method: 'POST' });
+                const resp = await fetch('/api/kill_switch_toggle', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Dashboard-Action': 'panic-toggle'
+                    }
+                });
                 const res = await resp.json();
                 updatePanicUI(res.halted);
                 alert(res.message);
@@ -2215,7 +2221,7 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", allowed_origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Dashboard-Action")
         self.end_headers()
 
     def do_POST(self):
@@ -2227,8 +2233,10 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'{"error": "Forbidden: Cross-origin request rejected"}')
             return
 
+        # Validação estrita do Host header (combate DNS rebinding / host spoofing)
         host = self.headers.get("Host", "")
-        if host and not any(host.startswith(h) for h in ("localhost:8080", "127.0.0.1:8080")):
+        allowed_hosts = {"localhost:8080", "127.0.0.1:8080", "localhost", "127.0.0.1"}
+        if host and host not in allowed_hosts:
             self.send_response(403)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -2237,6 +2245,13 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
 
         path_clean = self.path.split('?')[0].rstrip('/')
         if path_clean == "/api/kill_switch_toggle":
+            action_hdr = self.headers.get("X-Dashboard-Action", "")
+            if action_hdr != "panic-toggle":
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error": "Forbidden: Missing or invalid security action header"}')
+                return
             is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
             if is_halted:
                 # Desativa o kill-switch

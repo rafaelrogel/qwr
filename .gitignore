@@ -77,3 +77,5 @@ natural_gas_dataset/
 Thumbs.db
 .publish-state.json
 .kaggle-uploaded
+HALT
+EMERGENCY_STOP

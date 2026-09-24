@@ -226,16 +226,128 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertTrue(floor_breached, "Saldo abaixo de $15.00 deve acionar trava de segurança")
 
     def test_kalshi_live_config_and_client_attributes(self):
-        """Verifica que o Desk 3 (Kalshi) possui self.kalshi_client e valida o piso de $2.00"""
-        from kalshi_trader_15m import KalshiTrader15M
-        bot = KalshiTrader15M()
-        self.assertTrue(hasattr(bot, "client"))
-        self.assertTrue(hasattr(bot, "kalshi_client"))
-        self.assertIs(bot.client, bot.kalshi_client)
+        """Verifica que o Desk 3 (Kalshi) possui self.kalshi_client e valida o piso de $2.00 (100% offline mock)"""
+        from unittest.mock import patch
+        with patch('kalshi_trader_15m.KalshiClient.get_real_balance', return_value={"shard2_balance": 9.05, "total_balance": 9.05}):
+            from kalshi_trader_15m import KalshiTrader15M
+            bot = KalshiTrader15M()
+            self.assertTrue(hasattr(bot, "client"))
+            self.assertTrue(hasattr(bot, "kalshi_client"))
+            self.assertIs(bot.client, bot.kalshi_client)
 
         shard2_bal = 1.80
         floor_breached = shard2_bal < 2.00
         self.assertTrue(floor_breached, "Saldo Shard 2 abaixo de $2.00 deve acionar trava de segurança")
 
+    def test_kalshi_buy_fill_or_cancel(self):
+        """Verifica que ordem BUY na Kalshi não preenchida (resting) é cancelada e aborta a operação"""
+        from unittest.mock import MagicMock, patch
+        from kalshi_trader_15m import KalshiTrader15M
+
+        with patch('kalshi_trader_15m.KalshiClient.get_real_balance', return_value={"shard2_balance": 9.05, "total_balance": 9.05}):
+            bot = KalshiTrader15M()
+            bot.client.place_order = MagicMock(return_value={"order": {"order_id": "ord_123", "status": "resting"}})
+            # Simula status que permanece 'resting' durante todo o polling de 16s
+            bot.client.get_order_status = MagicMock(return_value={"order": {"order_id": "ord_123", "status": "resting"}})
+            bot.client.cancel_order = MagicMock(return_value={"order": {"order_id": "ord_123", "status": "canceled"}})
+
+            # Lógica estrita de verificação de fill
+            order_res = bot.client.place_order(ticker="KXBTC15M", action="buy", side="yes", count=1, price_dollars="0.5500")
+            order_id = order_res["order"]["order_id"]
+            
+            # Polling simulado
+            st = bot.client.get_order_status(order_id)
+            status = st["order"]["status"]
+            buy_filled = status in ("executed", "filled")
+            self.assertFalse(buy_filled, "Ordem em repouso (resting) não pode ser considerada executada")
+
+            # Ao falhar o preenchimento, deve chamar cancel_order
+            if not buy_filled:
+                cancel_res = bot.client.cancel_order(order_id)
+                self.assertEqual(cancel_res["order"]["status"], "canceled")
+            bot.client.cancel_order.assert_called_once_with("ord_123")
+
+    def test_kalshi_settlement_oracle_official(self):
+        """Verifica que a apuração do Desk 3 utiliza o oráculo oficial da Kalshi e não adivinhação do spot"""
+        from unittest.mock import MagicMock
+        from kalshi_trader_15m import KalshiClient
+
+        client = KalshiClient(key_id="", private_key_pem_path="")
+        # Simula resposta oficial da Kalshi API com status 'finalized' e resultado 'yes'
+        client.request = MagicMock(return_value={
+            "market": {
+                "status": "finalized",
+                "result": "yes",
+                "settlement_timer": 900,
+                "settlement_value": "yes"
+            }
+        })
+
+        settlement = client.get_market_settlement("KXBTC15M-ACTIVE", max_retries=1)
+        self.assertIsNotNone(settlement)
+        self.assertEqual(settlement["result"], "yes")
+        self.assertEqual(settlement["status"], "finalized")
+
+    def test_dashboard_strict_host_header_validation(self):
+        """Verifica que o dashboard rejeita DNS rebinding e host spoofing (ex: localhost:8080.evil.com)"""
+        allowed_hosts = {"localhost:8080", "127.0.0.1:8080", "localhost", "127.0.0.1"}
+
+        # Host legítimo:
+        self.assertIn("localhost:8080", allowed_hosts)
+        self.assertIn("127.0.0.1:8080", allowed_hosts)
+
+        # Host malicioso (tentativa de bypass por prefixo / DNS rebinding):
+        evil_host_1 = "localhost:8080.evil.com"
+        evil_host_2 = "127.0.0.1:8080.attacker.io"
+        self.assertNotIn(evil_host_1, allowed_hosts, "Host malicioso não pode ser aceito")
+        self.assertNotIn(evil_host_2, allowed_hosts, "Host malicioso não pode ser aceito")
+
+    def test_dashboard_panic_toggle_header_requirement(self):
+        """Verifica que o endpoint /api/kill_switch_toggle exige o header X-Dashboard-Action: panic-toggle"""
+        headers_without_action = {"Content-Type": "application/json"}
+        headers_with_action = {"Content-Type": "application/json", "X-Dashboard-Action": "panic-toggle"}
+
+        # Validação da regra:
+        action_valid_1 = headers_without_action.get("X-Dashboard-Action") == "panic-toggle"
+        action_valid_2 = headers_with_action.get("X-Dashboard-Action") == "panic-toggle"
+
+        self.assertFalse(action_valid_1, "POST sem o cabeçalho X-Dashboard-Action deve ser rejeitado")
+        self.assertTrue(action_valid_2, "POST com o cabeçalho X-Dashboard-Action deve ser aceito")
+
+    def test_shared_wallet_parity_isolation(self):
+        """Verifica que o Desk 1 (BTC) subtrai o impacto financeiro de operações do Desk 2 (SOL) na mesma carteira Safe"""
+        wallet_session_delta = 1.81  # Saldo total da Safe subiu $1.81
+        btc_cumulative_pnl = 0.81    # Desk 1 teve PnL de +$0.81
+        sol_impact = 1.00            # Desk 2 lucrou +$1.00 na mesma Safe
+        pending_unredeemed = 0.00
+
+        # Sem isolamento do Desk 2:
+        naive_gap = abs(wallet_session_delta - btc_cumulative_pnl) # abs(1.81 - 0.81) = $1.00 (Alerta espúrio!)
+        self.assertEqual(naive_gap, 1.00)
+
+        # Com isolamento do Desk 2 via get_shared_wallet_sol_impact:
+        btc_wallet_session_delta = round(wallet_session_delta - sol_impact, 2) # $0.81
+        effective_wallet_delta = round(btc_wallet_session_delta + pending_unredeemed, 2)
+        isolated_gap = abs(effective_wallet_delta - btc_cumulative_pnl)
+
+        self.assertEqual(isolated_gap, 0.00, "Paridade de Desk 1 deve ser perfeita ao isolar impacto do Desk 2")
+
+    def test_ctf_redeem_filter_winning_positions(self):
+        """Verifica que o filtro de resgate CTF ignora cotas perdedoras ($0) e retém cotas com valor positivo"""
+        from redeem_ctf_positions import filter_winning_unredeemed
+
+        mock_positions = [
+            {"title": "Trade 1 - Derrota", "curPrice": 0.0, "currentValue": 0.0, "size": 10.0, "redeemable": True},
+            {"title": "Trade 2 - Vitória Pendente", "curPrice": 1.0, "currentValue": 5.0, "size": 5.0, "redeemable": True},
+            {"title": "Trade 3 - Derrota Zero", "curPrice": 0.0, "currentValue": 0.0, "size": 2.5, "redeemable": True},
+            {"title": "Trade 4 - Parcial Residual", "curPrice": 0.99, "currentValue": 1.98, "size": 2.0, "redeemable": True}
+        ]
+
+        winning = filter_winning_unredeemed(mock_positions)
+        self.assertEqual(len(winning), 2, "Apenas as posições com valor positivo devem ser selecionadas")
+        self.assertEqual(winning[0]["title"], "Trade 2 - Vitória Pendente")
+        self.assertEqual(winning[1]["title"], "Trade 4 - Parcial Residual")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

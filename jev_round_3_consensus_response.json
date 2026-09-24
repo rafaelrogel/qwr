@@ -1,0 +1,47 @@
+{
+  "system_readiness_verdict": {
+    "choice": "partially_approved_minor_caveats",
+    "confidence": 0.36,
+    "probabilities": {
+      "partially_approved_minor_caveats": 0.57,
+      "approved_with_high_confidence": 0.41,
+      "rejected_critical_flaws_remain": 0.02
+    }
+  },
+  "redeem_parity_solution_verdict": {
+    "choice": "mathematically_sound",
+    "confidence": 0.96,
+    "probabilities": {
+      "flawed": 0.02,
+      "unnecessary": 0.0,
+      "mathematically_sound": 0.98
+    }
+  },
+  "kalshi_fill_verification_verdict": {
+    "choice": "institutional_grade_accounting",
+    "confidence": 0.99,
+    "probabilities": {
+      "overengineered": 0.0,
+      "neutral": 0.0,
+      "institutional_grade_accounting": 1.0
+    }
+  },
+  "csrf_security_verdict": {
+    "choice": "proper_security_practice",
+    "confidence": 1.0,
+    "probabilities": {
+      "proper_security_practice": 1.0,
+      "unnecessary_for_local_tool": 0.0,
+      "neutral": 0.0
+    }
+  },
+  "final_risk_rating": {
+    "score": 0.91,
+    "confidence": 0.61
+  },
+  "comprehensive_synthesis": {
+    "text": 0.32
+  },
+  "timestamp": 1790254462.3022876,
+  "evaluation_time_sec": 0.6552639007568359
+}
