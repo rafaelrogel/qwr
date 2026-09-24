@@ -1,0 +1,29 @@
+{
+  "timestamp": 1790270881.0867887,
+  "elapsed": 0.8300282955169678,
+  "q1_deadlock_vs_protection": {
+    "choice": "legitimate_filter_protection",
+    "confidence": 1.0,
+    "probabilities": {
+      "legitimate_filter_protection": 1.0,
+      "technical_deadlock_bug": 0.0,
+      "excessive_paralysis": 0.0
+    }
+  },
+  "q2_price_cap": {
+    "choice": "essential_ev_discipline",
+    "confidence": 1.0,
+    "probabilities": {
+      "neutral": 0.0,
+      "essential_ev_discipline": 1.0,
+      "harmful_barrier": 0.0
+    }
+  },
+  "q3_health_score": {
+    "score": 3.49,
+    "confidence": 0.57
+  },
+  "q4_trade_probability": {
+    "noul": 0.54
+  }
+}
