@@ -576,7 +576,20 @@ def get_recent_btc_trades_and_stats(limit: int = 20) -> Dict[str, Any]:
             losses += 1
             gross_loss += abs(pnl_val)
 
-    current_bal = GLOBAL_STATE["account"]["current_balance_live"]
+    current_bal = None
+    if os.path.exists(JOURNAL_BTC_JSON):
+        try:
+            with open(JOURNAL_BTC_JSON, "r", encoding="utf-8") as f:
+                jdata = json.load(f)
+                b_val = jdata.get("current_balance")
+                if b_val is not None:
+                    current_bal = float(b_val)
+        except Exception:
+            pass
+    if current_bal is None or current_bal <= 0:
+        current_bal = float(real_trades[-1]["balance"]) if real_trades and real_trades[-1].get("balance") else INITIAL_DEPOSIT_BTC
+
+    GLOBAL_STATE["account"]["current_balance_live"] = round(current_bal, 4)
     net_real_pnl = round(current_bal - INITIAL_DEPOSIT_BTC, 2)
     net_real_pnl_pct = round((net_real_pnl / INITIAL_DEPOSIT_BTC) * 100, 2)
     win_rate = round((wins / total_real_trades * 100), 1) if total_real_trades > 0 else 0.0
@@ -2070,7 +2083,7 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/api/dashboard_state"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8080")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
 

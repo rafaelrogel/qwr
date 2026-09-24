@@ -1,0 +1,57 @@
+{
+  "timestamp": 1790244912.6014373,
+  "answers": {
+    "report_validity_verdict": {
+      "choice": "overwhelmingly_accurate_critical_truths",
+      "confidence": 1.0,
+      "probabilities": {
+        "partially_accurate_mostly_pedantic": 0.0,
+        "inaccurate_alarmist": 0.0,
+        "overwhelmingly_accurate_critical_truths": 1.0
+      }
+    },
+    "ledger_wallet_gap_verdict": {
+      "choice": "critical_accounting_failure",
+      "confidence": 1.0,
+      "probabilities": {
+        "acceptable_discrepancy": 0.0,
+        "critical_accounting_failure": 1.0,
+        "unimportant": 0.0
+      }
+    },
+    "kalshi_execution_verdict": {
+      "choice": "critical_live_blocker",
+      "confidence": 1.0,
+      "probabilities": {
+        "working_as_intended": 0.0,
+        "minor_inconvenience": 0.0,
+        "critical_live_blocker": 1.0
+      }
+    },
+    "kalshi_9y_lookahead_verdict": {
+      "choice": "confirmed_lookahead_contamination",
+      "confidence": 1.0,
+      "probabilities": {
+        "insignificant_bias": 0.0,
+        "valid_approximation": 0.0,
+        "confirmed_lookahead_contamination": 1.0
+      }
+    },
+    "immediate_capital_action": {
+      "choice": "halt_scale_fix_p0",
+      "confidence": 1.0,
+      "probabilities": {
+        "scale_capital_immediately": 0.0,
+        "maintain_current_live": 0.0,
+        "halt_scale_fix_p0": 1.0
+      }
+    },
+    "realistic_edge_assessment": {
+      "noul": 0.38
+    },
+    "code_hygiene_score": {
+      "score": 4.0,
+      "confidence": 1.0
+    }
+  }
+}

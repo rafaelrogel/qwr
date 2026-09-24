@@ -344,6 +344,7 @@ class SolanaTrader5M:
                     if self.mode == "PAPER":
                         self.balance = float(data.get("current_balance", self.balance))
                     self.trades = data.get("trades", [])
+                    self.traded_windows = {int(t["window_ts"]) for t in self.trades if "window_ts" in t}
             except Exception:
                 pass
 
@@ -559,8 +560,17 @@ class SolanaTrader5M:
                                         tx_hashes = resp_data.get("transactionsHashes") or []
                                         tx_hash = tx_hashes[0] if tx_hashes else order_id
                                         exec_price = best_ask
-                                        shares = round(FIXED_STAKE / exec_price, 4)
-                                        time.sleep(1.0)
+
+                                        # Verificacao rigorosa de cotas reais recebidas na carteira Safe
+                                        time.sleep(1.5)
+                                        real_tok = self.get_token_balance(target_token)
+                                        if real_tok is not None and real_tok >= 0.5:
+                                            shares = round(real_tok, 4)
+                                        else:
+                                            print(f"      [AVISO FAK KILLED] Ordem enviada mas sem contraparte no book (saldo: {real_tok:.2f} cotas).")
+                                            self.get_usdc_balance()
+                                            continue
+
                                         self.get_usdc_balance()
 
                                         self.current_open_position = {
@@ -582,7 +592,7 @@ class SolanaTrader5M:
                                             "mode": "LIVE"
                                         }
                                         print(f"      -> ORDEM REAL EXECUTADA COM SUCESSO! ID: {order_id} | Tx: {tx_hash}")
-                                        print(f"      -> Cotas obtidas: {shares} | Saldo Restante: ${self.balance:,.2f} USDC")
+                                        print(f"      -> Cotas confirmadas em carteira: {shares} | Saldo Restante: ${self.balance:,.2f} USDC")
                                     else:
                                         print(f"      [❌ ERRO AO EXECUTAR ORDEM REAL]: {order_res.get('error')}")
                                 else:

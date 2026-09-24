@@ -344,6 +344,7 @@ class LiveTrader:
         self.session_cycles = 0
         self.session_wins = 0
         self.session_losses = 0
+        self.cumulative_cycle_pnl = 0.0
 
         self.total_spent = 0.0
         self.total_pnl = 0.0
@@ -834,10 +835,13 @@ class LiveTrader:
                 print(f"    [AVISO TEMPO] Entrada tardia ({seconds_elapsed}s decorridos na vela). Strike :00 Chainlink nao foi amostrado no inicio.")
                 strike_captured_late = True
             strike = get_chainlink_price()
-            if strike:
-                self.candle_strikes[window_ts] = strike
-            else:
-                strike = get_candle_open(window_ts) or 0.0
+            if not strike or strike <= 0:
+                strike = get_candle_open(window_ts)
+            if not strike or strike <= 0:
+                print(f"    [🚨 FALHA CRÍTICA DE ORÁCULO]: Impossível capturar Strike aos :00 (Chainlink/Binance indisponíveis). Abortando janela {window_ts} para proteger capital.")
+                self.traded_windows.add(window_ts)
+                return
+            self.candle_strikes[window_ts] = strike
 
         if window_ts in self.binance_opens:
             binance_open = self.binance_opens[window_ts]
@@ -858,7 +862,14 @@ class LiveTrader:
             time.sleep(wait_time)
 
         # 5. Analise de Drift e Sinal via Oraculo Chainlink
-        spot_eval = get_chainlink_price() or strike
+        spot_eval = get_chainlink_price()
+        if not spot_eval or spot_eval <= 0:
+            spot_eval = get_binance_spot()
+        if not spot_eval or spot_eval <= 0:
+            print(f"    [🚨 FALHA CRÍTICA DE ORÁCULO]: Impossível capturar Spot aos 135s. Abortando janela {window_ts} para proteger capital.")
+            self.traded_windows.add(window_ts)
+            return
+
         delta = spot_eval - strike
         binance_eval = get_binance_spot() or spot_eval
         spread_eval = binance_eval - spot_eval
@@ -1468,24 +1479,34 @@ class LiveTrader:
             self.losses += 1
             self.session_losses += 1
 
+        self.cumulative_cycle_pnl = round(self.cumulative_cycle_pnl + cycle_pnl, 2)
+
         # Aguarda brevemente para refletir saldo no relayer
         if total_payout > 0 and self.execution_mode != "paper":
             time.sleep(3.0)
         new_balance = self.get_usdc_balance()
         if new_balance < 0:
             new_balance = self.current_balance
+        self.current_balance = new_balance
 
-        # Atualizacao do P&L Real da Sessao e vs Deposito
-        self.session_pnl = round(new_balance - self.session_initial_balance, 2)
+        # Atualizacao do P&L Real da Sessao medido exclusivamente na carteira (Truth Source)
+        wallet_session_delta = round(new_balance - self.session_initial_balance, 2)
+        self.session_pnl = wallet_session_delta
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
 
-        # Verificacao de paridade contabil carteira Polygon vs Sessao (sem reset forçado)
+        # Verificacao de paridade contabil REAL (Soma dos Trades vs Delta Real na Carteira Safe)
         if self.execution_mode != "paper":
-            expected_journal_balance = round(self.session_initial_balance + self.session_pnl, 2)
-            parity_gap = abs(new_balance - expected_journal_balance)
-            if parity_gap > 2.00:
-                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada entre saldo real (${new_balance:.2f}) e diário (${expected_journal_balance:.2f}).")
-                print("       Preservando contabilidade real da sessão e Circuit Breakers (sem reset forçado).")
+            expected_balance_by_trades = round(self.session_initial_balance + self.cumulative_cycle_pnl, 2)
+            parity_gap = abs(wallet_session_delta - self.cumulative_cycle_pnl)
+            if parity_gap > 1.50:
+                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada!")
+                print(f"       Resultado Teórico dos Trades: {self.cumulative_cycle_pnl:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
+                print(f"       Variação Real na Carteira Safe: {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
+                print("       -> Preservando a verdade da carteira on-chain para métricas e Circuit Breakers.")
+                if parity_gap > 3.50:
+                    print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
+                    self.is_halted = True
+                    self.halt_reason = f"Divergência contábil de carteira (${parity_gap:.2f})"
 
         self.traded_windows.add(window_ts)
 

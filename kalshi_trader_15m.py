@@ -171,17 +171,21 @@ class KalshiClient:
         """Obtém livro de ordens (order book L2)"""
         return self.request("GET", f"/markets/{ticker}/orderbook")
 
-    def place_order(self, ticker: str, side: str, count: int, price_cents: int) -> Optional[dict]:
-        """Envia ordem limit oficial V2 na Kalshi (side='yes' ou 'no')"""
-        # Na API V2 do single-book da Kalshi:
-        # side='bid' para comprar YES ao preço de yes_dollars
-        # side='ask' para comprar NO ao preço equivalente de (1.00 - no_dollars)
-        if side.lower() == "yes":
-            book_side = "bid"
-            price_dollars = f"{price_cents / 100.0:.4f}"
+    def place_order(self, ticker: str, side: str, count: int, price_cents: int, action: str = "buy") -> Optional[dict]:
+        """Envia ordem limit oficial V2 na Kalshi (side='yes' ou 'no', action='buy' ou 'sell')"""
+        # Na API V2 single-book da Kalshi:
+        # BUY YES  -> side='bid', price = yes_dollars
+        # BUY NO   -> side='ask', price = (1.00 - no_dollars)
+        # SELL YES -> side='ask', price = yes_dollars
+        # SELL NO  -> side='bid', price = (1.00 - no_dollars)
+        action = action.lower()
+        side = side.lower()
+        if action == "buy":
+            book_side = "bid" if side == "yes" else "ask"
+            price_dollars = f"{price_cents / 100.0:.4f}" if side == "yes" else f"{(100 - price_cents) / 100.0:.4f}"
         else:
-            book_side = "ask"
-            price_dollars = f"{(100 - price_cents) / 100.0:.4f}"
+            book_side = "ask" if side == "yes" else "bid"
+            price_dollars = f"{price_cents / 100.0:.4f}" if side == "yes" else f"{(100 - price_cents) / 100.0:.4f}"
 
         payload = {
             "ticker": ticker,
@@ -191,7 +195,7 @@ class KalshiClient:
             "price": price_dollars,
             "self_trade_prevention_type": "taker_at_cross",
             "time_in_force": "good_till_canceled",
-            "client_order_id": f"kbtc15_{int(time.time()*1000)}"
+            "client_order_id": f"kbtc15_{action}_{int(time.time()*1000)}"
         }
         return self.request("POST", "/portfolio/events/orders", body=payload, auth_required=True)
 
@@ -404,30 +408,46 @@ class KalshiTrader15M:
                     # Se o delta expandiu significativamente a favor (> 15 bps), take profit
                     cur_bps = (abs(cur_delta) / strike_price) * 10000
                     if (target_side == "yes" and cur_delta > 0 and cur_bps >= 15.0) or (target_side == "no" and cur_delta < 0 and cur_bps >= 15.0):
-                        sold_early = True
                         early_sell_price = TAKE_PROFIT_CENTS
-                        payout = early_sell_price / 100.0
-                        cycle_pnl = payout - stake
-                        self.balance += cycle_pnl
-                        print(f"\n[💰 TAKE-PROFIT KALSHI]: Posição vendida antecipadamente a {early_sell_price}¢ (Drift: {cur_bps:.1f} bps)!")
-                        print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
-                        self.save_trade({
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "execution_mode": self.mode,
-                            "order_id": real_order_id,
-                            "ticker": ticker,
-                            "strike": strike_price,
-                            "entry_price": entry_price,
-                            "target_side": target_side.upper(),
-                            "result": "VITÓRIA (TAKE-PROFIT)",
-                            "sold_early": True,
-                            "sell_price": early_sell_price,
-                            "payout": payout,
-                            "cycle_pnl": round(cycle_pnl, 4),
-                            "balance": round(self.balance, 4)
-                        })
-                        time.sleep(max(1, 900 - now_sec))
-                        return
+                        sell_ok = True
+                        sell_order_id = "paper-tp"
+
+                        if self.mode == "LIVE":
+                            print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA (TAKE-PROFIT) NA KALSHI]:")
+                            print(f"   Ticker: {ticker} | Lado: {target_side.upper()} | Preço Alvo: {early_sell_price}¢")
+                            sell_res = self.kalshi_client.place_order(ticker, target_side, count=1, price_cents=early_sell_price, action="sell")
+                            if sell_res and ("order" in sell_res or "order_id" in sell_res):
+                                sell_order_id = sell_res.get("order", {}).get("order_id") or sell_res.get("order_id", "SUBMITTED")
+                                print(f"   -> Ordem de Venda Enviada com Sucesso! Order ID: {sell_order_id}")
+                            else:
+                                print(f"   [❌ FALHA NA VENDA KALSHI]: {sell_res}. Mantendo posição até vencimento final.")
+                                sell_ok = False
+
+                        if sell_ok:
+                            sold_early = True
+                            payout = early_sell_price / 100.0
+                            cycle_pnl = payout - stake
+                            self.balance += cycle_pnl
+                            print(f"\n[💰 TAKE-PROFIT KALSHI CONFIRMADO]: Posição vendida a {early_sell_price}¢ (Drift: {cur_bps:.1f} bps)!")
+                            print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
+                            self.save_trade({
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "execution_mode": self.mode,
+                                "order_id": real_order_id,
+                                "sell_order_id": sell_order_id,
+                                "ticker": ticker,
+                                "strike": strike_price,
+                                "entry_price": entry_price,
+                                "target_side": target_side.upper(),
+                                "result": "VITÓRIA (TAKE-PROFIT)",
+                                "sold_early": True,
+                                "sell_price": early_sell_price,
+                                "payout": payout,
+                                "cycle_pnl": round(cycle_pnl, 4),
+                                "balance": round(self.balance, 4)
+                            })
+                            time.sleep(max(1, 900 - now_sec))
+                            return
 
                 time.sleep(15)
 
