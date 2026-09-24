@@ -40,6 +40,8 @@ JOURNAL_KALSHI_JSON = os.path.join(BASE_DIR, "kalshi_trading_journal.json")
 JOURNAL_NATGAS_JSON = os.path.join(BASE_DIR, "kalshi_natgas_journal.json")
 SIGNAL_WEATHER_JSON = os.path.join(BASE_DIR, "kalshi_live_weather_signal.json")
 SOL_LIVE_STATE_JSON = os.path.join(BASE_DIR, "sol_live_market_state.json")
+HALT_FILE = os.path.join(BASE_DIR, "HALT")
+EMERGENCY_FILE = os.path.join(BASE_DIR, "EMERGENCY_STOP")
 
 INITIAL_DEPOSIT_BTC = 21.00
 
@@ -758,6 +760,69 @@ HTML_CONTENT = """<!DOCTYPE html>
             50% { opacity: 0.4; transform: scale(0.85); }
         }
 
+        /* Panic Button / Kill-Switch Styles */
+        .panic-btn {
+            font-weight: 700;
+            font-size: 11px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            outline: none;
+            letter-spacing: 0.4px;
+        }
+
+        .panic-normal {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+        }
+
+        .panic-normal:hover {
+            background: rgba(16, 185, 129, 0.25);
+            box-shadow: 0 0 15px rgba(0, 245, 155, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .panic-active {
+            background: rgba(255, 51, 102, 0.35);
+            border: 1px solid var(--neon-rose);
+            color: #ffffff;
+            animation: panicPulse 1.2s infinite;
+        }
+
+        .panic-active:hover {
+            background: rgba(255, 51, 102, 0.55);
+        }
+
+        @keyframes panicPulse {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 0 25px rgba(255, 51, 102, 0.95);
+                transform: scale(1.03);
+            }
+        }
+
+        .panic-banner {
+            background: linear-gradient(90deg, rgba(255, 51, 102, 0.25), rgba(185, 28, 28, 0.4));
+            border: 1px solid var(--neon-rose);
+            border-radius: 12px;
+            padding: 14px 20px;
+            color: #fff;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 0 20px rgba(255, 51, 102, 0.3);
+            animation: panicPulse 2s infinite;
+        }
+
         /* Container */
         .container {
             max-width: 1400px;
@@ -1268,6 +1333,9 @@ HTML_CONTENT = """<!DOCTYPE html>
         </div>
 
         <div class="header-ribbon">
+            <button id="btnPanic" class="panic-btn panic-normal mono" onclick="togglePanicButton()" title="Clique para acionar o Kill-Switch Global e pausar todos os bots">
+                🛡️ BOTS ATIVOS (BOTÃO DE PÂNICO)
+            </button>
             <div class="status-chip">
                 <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
                 <span>DESK 1: BTC LIVE</span>
@@ -1291,6 +1359,22 @@ HTML_CONTENT = """<!DOCTYPE html>
     </header>
 
     <div class="container">
+
+        <!-- GLOBAL PANIC BANNER -->
+        <div id="panicGlobalBanner" class="panic-banner" style="display: none;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 22px;">🚨</span>
+                <div>
+                    <strong style="color: #fff; font-size: 14px;">KILL-SWITCH ATIVADO — TRADING GLOBAL CONGELADO:</strong>
+                    <div style="color: #fecdd3; font-size: 12px; margin-top: 2px;">
+                        Todos os bots (BTC 5m, SOL 5m e Kalshi 15m) estão pausados. Nenhuma nova ordem será aberta na CLOB ou Kalshi.
+                    </div>
+                </div>
+            </div>
+            <button onclick="togglePanicButton()" style="background: #ffffff; color: #e11d48; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 0 10px rgba(255,255,255,0.4);" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                REATIVAR BOTS AGORA 🔓
+            </button>
+        </div>
 
         <!-- MASTER DESK GROUP SWITCHER -->
         <div class="main-desk-switcher">
@@ -1898,6 +1982,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const data = await res.json();
                 latestDashboardData = data;
 
+                // Sincroniza Botão de Pânico / Kill-Switch
+                const isHalted = !!data.kill_switch_active;
+                updatePanicUI(isHalted);
+
                 // Clock
                 const now = new Date();
                 const clockEl = document.getElementById('clockUTC');
@@ -2057,6 +2145,50 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        let currentHaltState = false;
+
+        function updatePanicUI(isHalted) {
+            currentHaltState = isHalted;
+            const btn = document.getElementById('btnPanic');
+            const banner = document.getElementById('panicGlobalBanner');
+            if (btn) {
+                if (isHalted) {
+                    btn.className = 'panic-btn panic-active mono';
+                    btn.innerHTML = '🚨 PÂNICO ATIVADO (CLIQUE P/ DESATIVAR)';
+                    btn.title = 'Kill-Switch ATIVO: Todos os bots estão pausados. Clique para desativar e retomar negociações.';
+                } else {
+                    btn.className = 'panic-btn panic-normal mono';
+                    btn.innerHTML = '🛡️ BOTS ATIVOS (BOTÃO DE PÂNICO)';
+                    btn.title = 'Sistema operando normalmente. Clique para pausar imediatamente todos os bots.';
+                }
+            }
+            if (banner) {
+                banner.style.display = isHalted ? 'flex' : 'none';
+            }
+        }
+
+        async function togglePanicButton() {
+            const actionText = currentHaltState 
+                ? "DESEJA DESATIVAR O PÂNICO E RETOMAR AS OPERAÇÕES DE TODOS OS BOTS?" 
+                : "⚠️ ATENÇÃO: DESEJA ATIVAR O BOTÃO DE PÂNICO E CONGELAR IMEDIATAMENTE TODOS OS BOTS (BTC, SOL, KALSHI)?";
+            
+            if (!confirm(actionText)) {
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('btnPanic');
+                if (btn) btn.innerText = "⏳ PROCESSANDO...";
+                const resp = await fetch('/api/kill_switch_toggle', { method: 'POST' });
+                const res = await resp.json();
+                updatePanicUI(res.halted);
+                alert(res.message);
+            } catch (err) {
+                console.error("Erro ao alternar kill-switch:", err);
+                alert("Erro de conexão ao alternar Kill-Switch: " + err);
+            }
+        }
+
         // Inicialização
         initViewRouting();
         setInterval(updateDashboard, 1000);
@@ -2071,6 +2203,58 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass # Mantém console limpo
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_POST(self):
+        path_clean = self.path.split('?')[0].rstrip('/')
+        if path_clean == "/api/kill_switch_toggle":
+            is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+            if is_halted:
+                # Desativa o kill-switch
+                removed = []
+                if os.path.exists(HALT_FILE):
+                    try:
+                        os.remove(HALT_FILE)
+                        removed.append("HALT")
+                    except Exception:
+                        pass
+                if os.path.exists(EMERGENCY_FILE):
+                    try:
+                        os.remove(EMERGENCY_FILE)
+                        removed.append("EMERGENCY_STOP")
+                    except Exception:
+                        pass
+                new_state = False
+                msg = f"KILL-SWITCH DESATIVADO ({', '.join(removed) or 'OK'}): Bots liberados para retomar trading."
+            else:
+                # Ativa o kill-switch
+                try:
+                    with open(HALT_FILE, "w", encoding="utf-8") as f:
+                        f.write(f"HALTED_BY_DASHBOARD_AT_{int(time.time())}\n")
+                except Exception:
+                    pass
+                new_state = True
+                msg = "KILL-SWITCH ATIVADO: Todos os bots (BTC, SOL, Kalshi) foram congelados imediatamente."
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "halted": new_state,
+                "message": msg,
+                "timestamp": time.time()
+            }).encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_GET(self):
         global GLOBAL_STATE, btc_engine
         path_clean = self.path.split('?')[0].rstrip('/')
@@ -2080,10 +2264,21 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
             self.wfile.write(HTML_CONTENT.encode("utf-8"))
+        elif self.path.startswith("/api/kill_switch_status"):
+            is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "halted": is_halted,
+                "timestamp": time.time()
+            }).encode("utf-8"))
         elif self.path.startswith("/api/dashboard_state"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8080")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.end_headers()
 
@@ -2099,9 +2294,12 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             kalshi_trades = get_kalshi_trades()
             natgas_trades = get_natgas_trades()
 
+            is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+
             payload = {
                 "account": GLOBAL_STATE["account"],
                 "kalshi_balances": GLOBAL_STATE.get("kalshi_balances", {}),
+                "kill_switch_active": is_halted,
                 "current_cycle": {
                     "window_ts": cycle.get("window_ts"),
                     "title": cycle.get("title"),

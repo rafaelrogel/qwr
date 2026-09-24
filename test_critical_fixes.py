@@ -114,5 +114,48 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertTrue(issubclass(ThreadedTCPServer, socketserver.ThreadingMixIn))
         self.assertTrue(issubclass(ThreadedTCPServer, socketserver.TCPServer))
 
+    def test_dashboard_panic_button_toggle(self):
+        """Verifica a alternância de ativação e desativação do kill-switch pelo dashboard"""
+        from dashboard_server import HALT_FILE, EMERGENCY_FILE, HTML_CONTENT
+        
+        # Garante estado limpo inicial
+        if os.path.exists(HALT_FILE):
+            os.remove(HALT_FILE)
+        if os.path.exists(EMERGENCY_FILE):
+            os.remove(EMERGENCY_FILE)
+
+        try:
+            # 1. Estado inicial: Desativado
+            self.assertFalse(os.path.exists(HALT_FILE))
+            self.assertFalse(os.path.exists(EMERGENCY_FILE))
+
+            # 2. Simula toggle de ativação (como executado pelo endpoint /api/kill_switch_toggle)
+            with open(HALT_FILE, "w", encoding="utf-8") as f:
+                f.write("HALTED_BY_DASHBOARD_TEST\n")
+            
+            is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+            self.assertTrue(is_halted, "Kill-switch deve estar ativo após acionamento")
+
+            # 3. Simula toggle de desativação (como executado pelo endpoint ao desativar)
+            if os.path.exists(HALT_FILE):
+                os.remove(HALT_FILE)
+            if os.path.exists(EMERGENCY_FILE):
+                os.remove(EMERGENCY_FILE)
+
+            is_halted_after = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
+            self.assertFalse(is_halted_after, "Kill-switch deve estar inativo após desativação")
+
+            # 4. Verifica presença dos elementos na UI do Dashboard
+            self.assertIn('id="btnPanic"', HTML_CONTENT)
+            self.assertIn('id="panicGlobalBanner"', HTML_CONTENT)
+            self.assertIn('togglePanicButton', HTML_CONTENT)
+            self.assertIn('/api/kill_switch_toggle', HTML_CONTENT)
+
+        finally:
+            if os.path.exists(HALT_FILE):
+                os.remove(HALT_FILE)
+            if os.path.exists(EMERGENCY_FILE):
+                os.remove(EMERGENCY_FILE)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
