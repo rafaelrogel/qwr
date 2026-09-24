@@ -1506,7 +1506,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Polymarket CLOB V2 (Série btc-updown-5m)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-paper" id="btcBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
+                        <span class="desk-mode-tag mode-live" id="btcBadge">● CONTA REAL ATIVA</span>
                     </div>
 
                     <div class="timer-box">
@@ -1557,7 +1557,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Polymarket sol-updown-5m (Safe 1271)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-paper" id="solBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
+                        <span class="desk-mode-tag mode-live" id="solBadge">● CONTA REAL ATIVA</span>
                     </div>
 
                     <div class="timer-box">
@@ -1672,7 +1672,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Série Oficial KXBTC15M (Exchange Shard 2)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-paper" id="kalshiBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
+                        <span class="desk-mode-tag mode-live" id="kalshiBadge">● CONTA REAL ATIVA</span>
                     </div>
 
                     <div class="timer-box">
