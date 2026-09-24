@@ -1,0 +1,56 @@
+{
+  "timestamp": 1790227971.5751052,
+  "audit_period": "2026-09-23 20:30 UTC to 2026-09-24 06:30 UTC",
+  "elapsed_seconds": 0.7082676887512207,
+  "answers": {
+    "sirmartingale_tp_effectiveness": {
+      "choice": "decisive_structural_edge",
+      "confidence": 0.97,
+      "probabilities": {
+        "lucky_coincidence": 0.02,
+        "decisive_structural_edge": 0.98,
+        "unnecessary_feature": 0.0
+      }
+    },
+    "overnight_filter_discipline": {
+      "choice": "exemplary_institutional_discipline",
+      "confidence": 0.99,
+      "probabilities": {
+        "random_filtering": 0.0,
+        "exemplary_institutional_discipline": 0.99,
+        "excessively_conservative": 0.01
+      }
+    },
+    "multi_desk_architecture_rating": {
+      "score": 1.61,
+      "confidence": 0.5
+    },
+    "jev_forward_probabilistic_outlook": {
+      "noul": 0.39
+    }
+  },
+  "portfolio_status": {
+    "polymarket_btc_live": {
+      "balance": 22.5421,
+      "initial_deposit": 21.0,
+      "net_pnl": 1.54,
+      "session_pnl": 1.74,
+      "win_rate": 70.8,
+      "total_trades": 137
+    },
+    "polymarket_sol_paper": {
+      "balance": 29.6506,
+      "win_rate": 100.0,
+      "total_trades": 3
+    },
+    "kalshi_btc_paper": {
+      "balance": 35.91,
+      "real_balance": 11.36,
+      "win_rate": 100.0
+    },
+    "kalshi_natgas_paper": {
+      "balance": 1000.0,
+      "signal": "NEUTRAL / NO TRADE"
+    }
+  }
+}

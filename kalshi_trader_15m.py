@@ -65,9 +65,10 @@ def load_env_config() -> Dict[str, str]:
     return cfg
 
 ENV_CFG = load_env_config()
-EXECUTION_MODE = ENV_CFG.get("KALSHI_MODE", "PAPER").upper() # 'PAPER' ou 'LIVE'
+EXECUTION_MODE = ENV_CFG.get("KALSHI_MODE", "LIVE").upper() # 'PAPER' ou 'LIVE'
 KALSHI_KEY_ID = ENV_CFG.get("KALSHI_KEY_ID", "")
-KALSHI_PRIVATE_KEY_PATH = ENV_CFG.get("KALSHI_PRIVATE_KEY_PATH", os.path.join(BASE_DIR, "kalshi_key.pem"))
+raw_key_path = ENV_CFG.get("KALSHI_PRIVATE_KEY_PATH", "kalshi.txt")
+KALSHI_PRIVATE_KEY_PATH = raw_key_path if os.path.isabs(raw_key_path) else os.path.join(BASE_DIR, raw_key_path)
 
 # ===================== CLIENTE KALSHI API V2 =====================
 class KalshiClient:
@@ -108,7 +109,7 @@ class KalshiClient:
 
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "KalshiBTC15mAlgoTrader/1.0"
+            "User-Agent": "KalshiBTC15mAlgoTrader/2.0"
         }
 
         if auth_required:
@@ -124,8 +125,27 @@ class KalshiClient:
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return json.loads(r.read().decode('utf-8'))
-        except Exception as e:
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8', errors='ignore')
+            print(f"[Kalshi API Erro {e.code}]: {err_body}")
             return None
+        except Exception as e:
+            print(f"[Kalshi Request Erro]: {e}")
+            return None
+
+    def get_real_balance(self) -> Dict[str, float]:
+        """Consulta o saldo real na Kalshi via API v2"""
+        res = self.request("GET", "/portfolio/balance", auth_required=True)
+        shard2_bal = 0.0
+        total_bal = 0.0
+        if res:
+            if "balance_dollars" in res:
+                total_bal = float(res["balance_dollars"])
+            breakdowns = res.get("balance_breakdown", [])
+            for b in breakdowns:
+                if b.get("exchange_index") == 2:
+                    shard2_bal = float(b.get("balance", 0.0))
+        return {"total_balance": total_bal, "shard2_balance": shard2_bal}
 
     def get_btc_15m_markets(self) -> List[dict]:
         """Busca o mercado KXBTC15M atualmente em andamento na Kalshi"""
@@ -137,12 +157,10 @@ class KalshiClient:
                 ot = m.get("open_time")
                 ct = m.get("close_time")
                 st = m.get("status")
-                # Ativo se status for active ou se agora estiver no intervalo [open_time, close_time]
                 if st == "active" or (ot and ct and ot <= now_iso <= ct):
                     active_markets.append(m)
             if active_markets:
                 return active_markets
-            # Fallback: primeiro mercado que encerra no futuro
             future = [m for m in res["markets"] if m.get("close_time") and m.get("close_time") > now_iso]
             if future:
                 future.sort(key=lambda x: x["close_time"])
@@ -154,17 +172,33 @@ class KalshiClient:
         return self.request("GET", f"/markets/{ticker}/orderbook")
 
     def place_order(self, ticker: str, side: str, count: int, price_cents: int) -> Optional[dict]:
-        """Envia ordem limit de compra ou venda na Kalshi (side='yes' ou 'no')"""
+        """Envia ordem limit oficial V2 na Kalshi (side='yes' ou 'no')"""
+        # Na API V2 do single-book da Kalshi:
+        # side='bid' para comprar YES ao preço de yes_dollars
+        # side='ask' para comprar NO ao preço equivalente de (1.00 - no_dollars)
+        if side.lower() == "yes":
+            book_side = "bid"
+            price_dollars = f"{price_cents / 100.0:.4f}"
+        else:
+            book_side = "ask"
+            price_dollars = f"{(100 - price_cents) / 100.0:.4f}"
+
         payload = {
             "ticker": ticker,
-            "action": "buy",
-            "side": side.lower(),
+            "side": book_side,
             "type": "limit",
-            "count": count,
-            "yes_price": price_cents if side.lower() == "yes" else (100 - price_cents),
+            "count": str(count),
+            "price": price_dollars,
+            "self_trade_prevention_type": "taker_at_cross",
+            "time_in_force": "good_till_canceled",
             "client_order_id": f"kbtc15_{int(time.time()*1000)}"
         }
-        return self.request("POST", "/portfolio/orders", body=payload, auth_required=True)
+        return self.request("POST", "/portfolio/events/orders", body=payload, auth_required=True)
+
+    def cancel_order(self, order_id: str, exchange_index: int = 2) -> Optional[dict]:
+        """Cancela ordem oficial V2 na Kalshi"""
+        return self.request("DELETE", f"/portfolio/events/orders/{order_id}?exchange_index={exchange_index}", auth_required=True)
+
 
 
 # ===================== ENGINE DE PREÇO SPOT (Binance Ref) =====================
@@ -215,7 +249,10 @@ class KalshiTrader15M:
     def __init__(self):
         self.client = KalshiClient(KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH)
         self.mode = EXECUTION_MODE
-        self.balance = 35.00 # $10 depósito + $25 bônus inicial padrão
+        self.balance = 35.00 # fallback padrão
+        if self.mode == "LIVE":
+            b_info = self.client.get_real_balance()
+            self.balance = b_info.get("shard2_balance") or b_info.get("total_balance") or 9.05
         self.load_journal()
 
     def load_journal(self):
@@ -223,7 +260,14 @@ class KalshiTrader15M:
             try:
                 with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.balance = data.get("current_balance", self.balance)
+                    if self.mode != "LIVE":
+                        self.balance = data.get("current_balance", self.balance)
+                    else:
+                        # Em live, sincroniza com o saldo real da Shard 2
+                        b_info = self.client.get_real_balance()
+                        real_s2 = b_info.get("shard2_balance")
+                        if real_s2 and real_s2 > 0:
+                            self.balance = real_s2
             except Exception:
                 pass
 
@@ -240,7 +284,7 @@ class KalshiTrader15M:
         print("\n" + "=" * 80)
         print(f" [KALSHI 15M] Janela Ativa: {now_utc.strftime('%Y-%m-%d')} {now_utc.hour:02d}:{window_minute:02d}:00 UTC")
         print(f" Tempo Decorrido: {elapsed_sec}s / 900s | Restam: {remaining_sec}s | Modo: {self.mode}")
-        print(f" Saldo Atual: ${self.balance:,.2f} USD")
+        print(f" Saldo Real Shard 2: ${self.balance:,.2f} USD")
         print("=" * 80)
 
         # 1. Ponto de Avaliação Ótimo: Aos 450s (exata metade dos 900s da vela de 15m)
@@ -330,9 +374,16 @@ class KalshiTrader15M:
 
             stake = entry_price / 100.0
             print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f}")
+            real_order_id = ""
             if self.mode == "LIVE":
                 res = self.client.place_order(ticker, target_side, 1, entry_price)
-                print(f"   Resposta Kalshi: {res}")
+                print(f"   [⚡ RESPOSTA DA ORDEM REAL KALSHI]: {res}")
+                if not res or ("order_id" not in res and "order" not in res):
+                    print("   [!] Falha na execução da ordem na Kalshi. Abortando entrada para proteger capital.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+                real_order_id = res.get("order_id") or res.get("order", {}).get("order_id", "")
+                print(f"   [✅ CONFIRMAÇÃO DE EXECUÇÃO ON-EXCHANGE]: Order ID: {real_order_id}")
             else:
                 print(f"   [SIMULAÇÃO PAPER]: 1 contrato de {target_side.upper()} executado a {entry_price}¢ com sucesso!")
 
@@ -350,7 +401,7 @@ class KalshiTrader15M:
                 spot_cur = get_binance_btc_spot()
                 if spot_cur:
                     cur_delta = spot_cur - strike_price
-                    # Se o delta expandiu significativamente a favor (> 15 bps), simula take profit na CLOB
+                    # Se o delta expandiu significativamente a favor (> 15 bps), take profit
                     cur_bps = (abs(cur_delta) / strike_price) * 10000
                     if (target_side == "yes" and cur_delta > 0 and cur_bps >= 15.0) or (target_side == "no" and cur_delta < 0 and cur_bps >= 15.0):
                         sold_early = True
@@ -362,6 +413,8 @@ class KalshiTrader15M:
                         print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
                         self.save_trade({
                             "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "execution_mode": self.mode,
+                            "order_id": real_order_id,
                             "ticker": ticker,
                             "strike": strike_price,
                             "entry_price": entry_price,
@@ -396,6 +449,8 @@ class KalshiTrader15M:
 
                 self.save_trade({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "execution_mode": self.mode,
+                    "order_id": real_order_id,
                     "ticker": ticker,
                     "strike": strike_price,
                     "final_spot": final_spot,

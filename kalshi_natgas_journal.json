@@ -1,0 +1,15 @@
+{
+  "engine": "Kalshi Natural Gas & Weather Simulation (Co-Piloto JEV Ativo)",
+  "created_at": "2026-09-23T22:10:09.568983",
+  "initial_bankroll": 1000.0,
+  "current_balance": 1000.0,
+  "total_trades": 0,
+  "wins": 0,
+  "losses": 0,
+  "win_rate_pct": 0.0,
+  "total_pnl": 0.0,
+  "open_position": null,
+  "vetoed_by_jev_count": 0,
+  "trade_history": [],
+  "jev_audit_log": []
+}

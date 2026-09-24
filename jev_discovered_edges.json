@@ -1,0 +1,135 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0ce8918087905970992141de89a91",
+  "usage": {
+    "input_tokens": 2402,
+    "output_tokens": 380
+  },
+  "answers": {
+    "most_lucrative_undiscovered_edge": {
+      "choice": "bps_sweet_spot_filtering",
+      "score": null,
+      "confidence": 0.59,
+      "probabilities": {
+        "us_london_session_focus": 0.03,
+        "prior_candle_trend_alignment": 0.18,
+        "bps_sweet_spot_filtering": 0.7,
+        "weekend_vs_weekday_arbitrage": 0.09
+      },
+      "noul": null
+    },
+    "best_bps_range_for_highest_ev": {
+      "choice": "bps_over_15_0",
+      "score": null,
+      "confidence": 0.18,
+      "probabilities": {
+        "bps_5_0_to_8_0": 0.27,
+        "bps_3_5_to_5_0": 0.28,
+        "bps_over_15_0": 0.45
+      },
+      "noul": null
+    },
+    "trend_continuation_vs_pullback": {
+      "choice": "require_trend_continuation",
+      "score": null,
+      "confidence": 0.49,
+      "probabilities": {
+        "independent_candle_drift": 0.25,
+        "require_trend_continuation": 0.75
+      },
+      "noul": null
+    },
+    "session_hour_edge": {
+      "choice": "time_invariant",
+      "score": null,
+      "confidence": 0.99,
+      "probabilities": {
+        "ny_session_superior": 0.0,
+        "asian_session_fragile": 0.0,
+        "time_invariant": 1.0
+      },
+      "noul": null
+    },
+    "jev_top_optimization_recommendation": {
+      "choice": "add_prior_candle_filter",
+      "score": null,
+      "confidence": 0.36,
+      "probabilities": {
+        "filter_out_weekends": 0.02,
+        "add_prior_candle_filter": 0.52,
+        "cap_drift_at_8_bps": 0.3,
+        "maintain_current_rules": 0.16
+      },
+      "noul": null
+    },
+    "hidden_edge_impact_rating": {
+      "choice": null,
+      "score": 1.7,
+      "confidence": 0.17,
+      "probabilities": {
+        "0": 0.15,
+        "1": 0.31,
+        "2": 0.27,
+        "3": 0.22,
+        "4": 0.05
+      },
+      "noul": null
+    },
+    "jev_secret_alpha_confidence": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.44
+    }
+  },
+  "matrices": {
+    "sample_scope": "9 Full Years (Aug 2017 - Sep 2026), 318,570 15m windows, BTC/USD",
+    "edge_dimension_1_bps_magnitude": {
+      "2.0_to_3.5_bps": "19635/29572 (66.4%)",
+      "3.5_to_5.0_bps": "19419/27282 (71.2%)",
+      "5.0_to_8.0_bps": "35615/46123 (77.2%)",
+      "8.0_to_15.0_bps": "59941/71577 (83.7%)",
+      "over_15.0_bps": "92550/101099 (91.5%)"
+    },
+    "edge_dimension_2_prior_candle_alignment": {
+      "trend_continuation (prior_same_dir)": "106491/131162 (81.2%)",
+      "pullback_rebound (prior_opposite_dir)": "120669/144491 (83.5%)"
+    },
+    "edge_dimension_3_day_of_week_efficiency": {
+      "Segunda": "32933/40041 (82.2%)",
+      "Terça": "32827/40189 (81.7%)",
+      "Quarta": "32917/39983 (82.3%)",
+      "Quinta": "32912/40158 (82.0%)",
+      "Sexta": "33038/40087 (82.4%)",
+      "Sábado": "31091/37300 (83.4%)",
+      "Domingo": "31442/37895 (83.0%)"
+    },
+    "edge_dimension_4_hourly_utc_sessions": {
+      "00:00 UTC": "9686/11715 (82.7%)",
+      "01:00 UTC": "9571/11602 (82.5%)",
+      "02:00 UTC": "9416/11409 (82.5%)",
+      "03:00 UTC": "9232/11177 (82.6%)",
+      "04:00 UTC": "9245/11140 (83.0%)",
+      "05:00 UTC": "9207/11115 (82.8%)",
+      "06:00 UTC": "9257/11147 (83.0%)",
+      "07:00 UTC": "9425/11292 (83.5%)",
+      "08:00 UTC": "9401/11384 (82.6%)",
+      "09:00 UTC": "9403/11311 (83.1%)",
+      "10:00 UTC": "9282/11305 (82.1%)",
+      "11:00 UTC": "9293/11356 (81.8%)",
+      "12:00 UTC": "9615/11654 (82.5%)",
+      "13:00 UTC": "9578/11787 (81.3%)",
+      "14:00 UTC": "9736/11918 (81.7%)",
+      "15:00 UTC": "9707/11864 (81.8%)",
+      "16:00 UTC": "9554/11797 (81.0%)",
+      "17:00 UTC": "9522/11597 (82.1%)",
+      "18:00 UTC": "9454/11473 (82.4%)",
+      "19:00 UTC": "9422/11446 (82.3%)",
+      "20:00 UTC": "9591/11582 (82.8%)",
+      "21:00 UTC": "9482/11554 (82.1%)",
+      "22:00 UTC": "9550/11530 (82.8%)",
+      "23:00 UTC": "9531/11498 (82.9%)"
+    }
+  }
+}

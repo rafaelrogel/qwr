@@ -1,0 +1,108 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0cfa3f67475ebbc7596dd44113e3c",
+  "answers": {
+    "jev_assessment_of_3_engines_health": {
+      "choice": "mixed_signal_needs_caution",
+      "score": null,
+      "confidence": 0.82,
+      "probabilities": {
+        "exceptionally_healthy_statistical_edge": 0.12,
+        "mixed_signal_needs_caution": 0.88,
+        "regime_fragility_warning": 0.0
+      },
+      "noul": null
+    },
+    "role_of_sirmartingale_take_profit": {
+      "choice": "essential_variance_reducer",
+      "score": null,
+      "confidence": 0.89,
+      "probabilities": {
+        "premature_upside_cap": 0.05,
+        "statistically_neutral": 0.02,
+        "essential_variance_reducer": 0.93
+      },
+      "noul": null
+    },
+    "best_next_operational_step": {
+      "choice": "cross_deposit_milestone_and_keep_paper_validation",
+      "score": null,
+      "confidence": 0.99,
+      "probabilities": {
+        "promote_kalshi_to_live_now": 0.01,
+        "promote_solana_to_live_now": 0.0,
+        "cross_deposit_milestone_and_keep_paper_validation": 0.99,
+        "increase_btc_stake_to_two_dollars": 0.0
+      },
+      "noul": null
+    },
+    "system_robustness_score": {
+      "choice": null,
+      "score": 1.81,
+      "confidence": 0.72,
+      "probabilities": {
+        "0": 0.01,
+        "1": 0.24,
+        "2": 0.68,
+        "3": 0.07,
+        "4": 0.0
+      },
+      "noul": null
+    },
+    "jev_confidence_in_positive_ev": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.61
+    }
+  },
+  "dossier": {
+    "evaluation_title": "Multi-Engine Performance Telemetry Review across 3 Bots",
+    "bot_1_polymarket_btc_5m_LIVE": {
+      "execution_mode": "LIVE ON-CHAIN REAL MONEY",
+      "total_cycles_executed": 133,
+      "wins": 95,
+      "losses": 38,
+      "win_rate": 71.4,
+      "initial_deposit": 21.0,
+      "current_balance": 20.804,
+      "capital_recovered_pct": 99.07,
+      "session_net_pnl": "+2.28 USD",
+      "recent_highlights": [
+        "Cycle 131: Take-Profit antecipado a 78c (+1.05 USD)",
+        "Cycle 132: Vitoria DOWN @ 53c (+0.89 USD)",
+        "Cycle 133: Take-Profit antecipado a 74c (+0.85 USD) - SAVED the trade from a last-second candle reversal (close was DOWN by 7 cents)!"
+      ]
+    },
+    "bot_2_polymarket_sol_5m_PAPER": {
+      "execution_mode": "PAPER SIMULATION (Polymarket sol-updown-5m)",
+      "initial_balance": 25.0,
+      "current_balance": 29.0688,
+      "net_pnl": "+4.07 USD (+16.3% ROI)",
+      "total_trades": 2,
+      "wins": 2,
+      "losses": 0,
+      "win_rate": 100.0,
+      "trades": [
+        "Trade 1 (16:00 UTC): Bought UP @ 25.1c (3.98 shares) -> Won +$2.98 USD",
+        "Trade 2 (17:10 UTC): Bought DOWN @ 45.1c (2.22 shares) -> SirMartingale Take-Profit triggered early @ 94c -> Won +$1.08 USD"
+      ]
+    },
+    "bot_3_kalshi_btc_15m_PAPER": {
+      "execution_mode": "PAPER SIMULATION (Kalshi Institutional CFTC)",
+      "initial_balance": 35.0,
+      "current_balance": 35.38,
+      "net_pnl": "+0.38 USD",
+      "real_account_connected": "017addcd-1e14... ($11.36 USD on-chain)",
+      "total_trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "trades": [
+        "Trade 1 (17:43 UTC): Ticker KXBTC15M-26SEP231345-45, Strike $84,055.80, Bought YES @ 48c -> SirMartingale Take-Profit triggered early @ 86c -> Won +$0.38 USD"
+      ],
+      "defensive_vetos": "Jev prior candle filter successfully vetoed 3 false breakout counter-trend repiques (15:15, 16:00 UTC), saving $3.00 in forced losses."
+    }
+  }
+}

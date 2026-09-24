@@ -1,0 +1,138 @@
+{
+  "timestamp": 1790195991.1897557,
+  "answers": {
+    "mathematical_nature_of_vix": {
+      "choice": "mean_reverting_state_variable",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "unpredictable_pure_noise": 0.0,
+        "trending_macro_asset": 0.0,
+        "mean_reverting_state_variable": 1.0
+      },
+      "noul": null
+    },
+    "actionable_quant_edge": {
+      "choice": "volatility_risk_premium_harvesting",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "long_volatility_tail_hedging": 0.0,
+        "volatility_risk_premium_harvesting": 1.0,
+        "cross_asset_regime_filter": 0.0
+      },
+      "noul": null
+    },
+    "vix_spillover_into_crypto_score": {
+      "choice": null,
+      "score": 2.82,
+      "confidence": 0.61,
+      "probabilities": {
+        "0": 0.04,
+        "1": 0.04,
+        "2": 0.12,
+        "3": 0.65,
+        "4": 0.15
+      },
+      "noul": null
+    },
+    "jev_advice_to_algorithmic_traders": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.34
+    }
+  },
+  "vix_statistics": {
+    "sample_period": "1990-01-02 to 2026-09-22 (9,278 trading sessions)",
+    "mean_vix": 19.43,
+    "median_vix": 17.58,
+    "std_dev": 7.72,
+    "min_vix": 9.14,
+    "max_vix": 82.69,
+    "skewness": 2.22,
+    "kurtosis": 8.81,
+    "percentiles": {
+      "10th": 12.17,
+      "25th": 13.99,
+      "50th_median": 17.58,
+      "75th": 22.68,
+      "90th": 28.51,
+      "95th": 32.89,
+      "99th": 46.7
+    },
+    "regime_distribution_pct": {
+      "complacent_below_15": 32.02,
+      "normal_15_to_20": 30.98,
+      "elevated_tension_20_to_30": 29.06,
+      "panic_30_to_40": 5.7,
+      "extreme_crisis_above_40": 2.24
+    },
+    "mean_reversion_half_life_days": 30.0,
+    "autocorrelations": {
+      "1_day": 0.977,
+      "5_days_1week": 0.917,
+      "21_days_1month": 0.762
+    },
+    "top_spikes_in_history": [
+      {
+        "date": "2020-03-16",
+        "close": 82.69,
+        "high": 83.56
+      },
+      {
+        "date": "2008-11-20",
+        "close": 80.86,
+        "high": 81.48
+      },
+      {
+        "date": "2008-10-27",
+        "close": 80.06,
+        "high": 81.65
+      },
+      {
+        "date": "2008-10-24",
+        "close": 79.13,
+        "high": 89.53
+      },
+      {
+        "date": "2020-03-18",
+        "close": 76.45,
+        "high": 85.47
+      },
+      {
+        "date": "2020-03-17",
+        "close": 75.91,
+        "high": 84.83
+      },
+      {
+        "date": "2020-03-12",
+        "close": 75.47,
+        "high": 76.83
+      },
+      {
+        "date": "2008-11-19",
+        "close": 74.26,
+        "high": 75.0
+      },
+      {
+        "date": "2008-11-21",
+        "close": 72.67,
+        "high": 80.74
+      },
+      {
+        "date": "2020-03-19",
+        "close": 72.0,
+        "high": 84.26
+      }
+    ]
+  },
+  "prediction_markets_impact": "spread_widening_and_mispricings",
+  "golden_rule": "tighten_spread_vetoes_and_reduce_size",
+  "golden_rule_probabilities": {
+    "tighten_spread_vetoes_and_reduce_size": 0.81,
+    "turn_off_all_bots": 0.19,
+    "increase_stake_size": 0.0
+  }
+}

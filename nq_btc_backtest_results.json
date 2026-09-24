@@ -1,0 +1,54 @@
+{
+  "2.1_bps": {
+    "total_signals": 281469,
+    "baseline_wr": 47.43,
+    "filtered_signals": 174266,
+    "filtered_wr": 47.38,
+    "wr_delta_global": -0.06,
+    "vetoed_conflicts": 107203,
+    "conflict_wr": 47.52,
+    "us_baseline_wr": 47.56,
+    "us_filtered_wr": 47.34,
+    "us_wr_delta": -0.22,
+    "us_conflict_wr": 47.88
+  },
+  "3.5_bps": {
+    "total_signals": 251582,
+    "baseline_wr": 47.22,
+    "filtered_signals": 155658,
+    "filtered_wr": 47.14,
+    "wr_delta_global": -0.08,
+    "vetoed_conflicts": 95924,
+    "conflict_wr": 47.35,
+    "us_baseline_wr": 47.39,
+    "us_filtered_wr": 47.07,
+    "us_wr_delta": -0.32,
+    "us_conflict_wr": 47.84
+  },
+  "5.0_bps": {
+    "total_signals": 221941,
+    "baseline_wr": 46.99,
+    "filtered_signals": 137196,
+    "filtered_wr": 46.9,
+    "wr_delta_global": -0.1,
+    "vetoed_conflicts": 84745,
+    "conflict_wr": 47.15,
+    "us_baseline_wr": 47.26,
+    "us_filtered_wr": 46.94,
+    "us_wr_delta": -0.32,
+    "us_conflict_wr": 47.72
+  },
+  "7.5_bps": {
+    "total_signals": 178599,
+    "baseline_wr": 46.62,
+    "filtered_signals": 110196,
+    "filtered_wr": 46.55,
+    "wr_delta_global": -0.07,
+    "vetoed_conflicts": 68403,
+    "conflict_wr": 46.72,
+    "us_baseline_wr": 47.04,
+    "us_filtered_wr": 46.78,
+    "us_wr_delta": -0.26,
+    "us_conflict_wr": 47.41
+  }
+}

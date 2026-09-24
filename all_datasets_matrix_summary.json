@@ -1,0 +1,120 @@
+{
+  "gold_5m": {
+    "sample_size": 500000,
+    "period": "2008-03-07 to 2003-05-05",
+    "avg_bps_per_5m_bar": 4.132536176706219,
+    "candle_continuation_rate": "46.7% (Mean-reversion: 53.3%)",
+    "midpoint_drift_win_rate_by_bps": {
+      ">= 0.5 bps": "238115/301064 (79.1%)",
+      ">= 1.0 bps": "222456/275029 (80.9%)",
+      ">= 2.0 bps": "191247/227615 (84.0%)",
+      ">= 3.5 bps": "146444/166357 (88.0%)",
+      ">= 5.0 bps": "105978/115618 (91.7%)"
+    }
+  },
+  "ES_SP500_Futures": {
+    "sample_size": 353206,
+    "avg_bps_per_bar": 3.9231826184049945,
+    "candle_continuation_rate": "48.3% (Mean-reversion: 51.7%)",
+    "midpoint_drift_win_rate_by_bps": {
+      ">= 1.0 bps": "193909/212467 (91.3%)",
+      ">= 2.0 bps": "118960/125736 (94.6%)",
+      ">= 3.5 bps": "63758/66011 (96.6%)",
+      ">= 5.0 bps": "37517/38542 (97.3%)",
+      ">= 10.0 bps": "9807/9972 (98.3%)"
+    }
+  },
+  "NQ_Nasdaq100_Futures": {
+    "sample_size": 329458,
+    "avg_bps_per_bar": 4.6300471551532585,
+    "candle_continuation_rate": "48.7% (Mean-reversion: 51.3%)",
+    "midpoint_drift_win_rate_by_bps": {
+      ">= 1.0 bps": "196133/213020 (92.1%)",
+      ">= 2.0 bps": "130243/137469 (94.7%)",
+      ">= 3.5 bps": "75207/77945 (96.5%)",
+      ">= 5.0 bps": "46561/47854 (97.3%)",
+      ">= 10.0 bps": "13199/13401 (98.5%)"
+    }
+  },
+  "eurusd_1m": {
+    "sample_size": 189680,
+    "avg_bps_per_bar": 0.5881798919946174,
+    "candle_continuation_rate": "48.6% (Mean-reversion: 51.4%)"
+  },
+  "polymarket_multi_asset_microstructure": {
+    "BTC": {
+      "5m": {
+        "samples_ticks": 6000,
+        "avg_spread": "$0.0119 (1.2 cents)",
+        "avg_top_depth_shares": "Bid: 2763.9 | Ask: 2763.9",
+        "avg_total_book_depth_shares": "71157",
+        "avg_microprice_disparity": "$0.0033"
+      },
+      "15m": {
+        "samples_ticks": 18000,
+        "avg_spread": "$0.0107 (1.1 cents)",
+        "avg_top_depth_shares": "Bid: 2250.3 | Ask: 2250.3",
+        "avg_total_book_depth_shares": "73791",
+        "avg_microprice_disparity": "$0.0030"
+      }
+    },
+    "ETH": {
+      "5m": {
+        "samples_ticks": 6000,
+        "avg_spread": "$0.0114 (1.1 cents)",
+        "avg_top_depth_shares": "Bid: 773.8 | Ask: 773.8",
+        "avg_total_book_depth_shares": "29054",
+        "avg_microprice_disparity": "$0.0033"
+      },
+      "15m": {
+        "samples_ticks": 18000,
+        "avg_spread": "$0.0102 (1.0 cents)",
+        "avg_top_depth_shares": "Bid: 833.6 | Ask: 833.6",
+        "avg_total_book_depth_shares": "42180",
+        "avg_microprice_disparity": "$0.0032"
+      }
+    },
+    "SOL": {
+      "5m": {
+        "samples_ticks": 6000,
+        "avg_spread": "$0.0138 (1.4 cents)",
+        "avg_top_depth_shares": "Bid: 590.4 | Ask: 590.4",
+        "avg_total_book_depth_shares": "26403",
+        "avg_microprice_disparity": "$0.0037"
+      },
+      "15m": {
+        "samples_ticks": 18000,
+        "avg_spread": "$0.0141 (1.4 cents)",
+        "avg_top_depth_shares": "Bid: 340.9 | Ask: 340.9",
+        "avg_total_book_depth_shares": "36760",
+        "avg_microprice_disparity": "$0.0040"
+      }
+    },
+    "XRP": {
+      "5m": {
+        "samples_ticks": 6000,
+        "avg_spread": "$0.0137 (1.4 cents)",
+        "avg_top_depth_shares": "Bid: 376.6 | Ask: 376.6",
+        "avg_total_book_depth_shares": "20141",
+        "avg_microprice_disparity": "$0.0035"
+      },
+      "15m": {
+        "samples_ticks": 18000,
+        "avg_spread": "$0.0138 (1.4 cents)",
+        "avg_top_depth_shares": "Bid: 331.7 | Ask: 331.7",
+        "avg_total_book_depth_shares": "30919",
+        "avg_microprice_disparity": "$0.0037"
+      }
+    }
+  },
+  "hedge_fund_13f_sample": {
+    "analyzed_filings": 50000,
+    "top_institutional_holdings_count": {
+      "ISHARES TR": 253,
+      "ALPHABET INC": 146,
+      "BERKSHIRE HATHAWAY INC DEL": 96,
+      "AMERICAN TOWER CORP NEW": 74,
+      "MICROSOFT CORP": 71
+    }
+  }
+}

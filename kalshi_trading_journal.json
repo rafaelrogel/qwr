@@ -1,9 +1,9 @@
 {
   "mode": "PAPER_SIMULATION_KALSHI_15M",
-  "current_balance": 35.38,
+  "current_balance": 35.91,
   "real_account_balance": 11.36,
-  "total_trades": 1,
-  "wins": 1,
+  "total_trades": 2,
+  "wins": 2,
   "losses": 0,
   "win_rate": 100.0,
   "last_status": "VETO_JEV_PRESERVED_CAPITAL",
@@ -20,6 +20,20 @@
       "payout": 0.86,
       "cycle_pnl": 0.38,
       "balance": 35.38
+    },
+    {
+      "timestamp": "2026-09-23T19:30:00.015822+00:00",
+      "ticker": "KXBTC15M-26SEP231530-30",
+      "strike": 84361.36,
+      "final_spot": 84414.01,
+      "entry_price": 47,
+      "target_side": "YES",
+      "winner": "UP",
+      "result": "VIT\u00d3RIA",
+      "sold_early": false,
+      "payout": 1.0,
+      "cycle_pnl": 0.53,
+      "balance": 35.91
     }
   ]
 }

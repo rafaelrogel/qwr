@@ -1,0 +1,22 @@
+{
+  "total_bars_5y": 329033,
+  "us_session_bars": 78203,
+  "contemporaneous_correlation_global": 0.0017,
+  "contemporaneous_correlation_us_hours": 0.0048,
+  "lead_lag_correlation_nq_to_btc_next_global": -0.0007,
+  "lead_lag_correlation_nq_to_btc_next_us_hours": -0.0008,
+  "concordance_by_nq_magnitude_us_hours": {
+    ">=5_bps": 50.48,
+    ">=10_bps": 50.52,
+    ">=20_bps": 49.92,
+    ">=30_bps": 49.43,
+    ">=50_bps": 48.02
+  },
+  "lead_lag_concordance_us_hours": {
+    ">=5_bps": 49.65,
+    ">=10_bps": 49.19,
+    ">=20_bps": 49.37,
+    ">=30_bps": 48.75,
+    ">=50_bps": 45.96
+  }
+}

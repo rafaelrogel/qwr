@@ -1,0 +1,86 @@
+{
+  "timestamp": 1790196640.6213906,
+  "answers": {
+    "mathematical_nature_of_climate_time_series": {
+      "choice": "deterministic_drift_with_enso_cycles",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "pure_stochastic_random_walk": 0.0,
+        "stationary_mean_reversion": 0.0,
+        "deterministic_drift_with_enso_cycles": 1.0
+      },
+      "noul": null
+    },
+    "actionable_kalshi_climate_edge": {
+      "choice": "enso_phase_arbitrage_on_annual_records",
+      "score": null,
+      "confidence": 0.91,
+      "probabilities": {
+        "naive_contrarian_betting": 0.0,
+        "unexploitable_perfect_pricing": 0.06,
+        "enso_phase_arbitrage_on_annual_records": 0.94
+      },
+      "noul": null
+    },
+    "predictability_score_climate_events": {
+      "choice": null,
+      "score": 2.7,
+      "confidence": 0.74,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.05,
+        "2": 0.21,
+        "3": 0.73,
+        "4": 0.01
+      },
+      "noul": null
+    },
+    "jev_advice_on_climate_prediction_markets": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.39
+    }
+  },
+  "climate_statistics": {
+    "temperature_series": {
+      "source": "NOAA Global Historical Climatology Network (GCAG) & NASA GISTEMP",
+      "coverage": "1850-01 to 2026-06 (2118 monthly records)",
+      "mean_anomaly": -0.057,
+      "min_anomaly": -1.04,
+      "max_anomaly": 1.348,
+      "warming_rate_since_1970_c_per_decade": 0.204,
+      "top_warmest_years_in_history": [
+        {
+          "year": 2024,
+          "mean_anomaly_celsius": 1.169
+        },
+        {
+          "year": 2023,
+          "mean_anomaly_celsius": 1.11
+        },
+        {
+          "year": 2025,
+          "mean_anomaly_celsius": 1.048
+        },
+        {
+          "year": 2026,
+          "mean_anomaly_celsius": 1.033
+        },
+        {
+          "year": 2016,
+          "mean_anomaly_celsius": 0.925
+        }
+      ]
+    },
+    "co2_atmospheric_series": {
+      "source": "NOAA Mauna Loa Observatory (ESRL)",
+      "coverage": "1970-01 to 1970-01 (821 months)",
+      "min_ppm": 314.44,
+      "max_ppm": 429.05,
+      "growth_ppm": 114.61
+    }
+  }
+}

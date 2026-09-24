@@ -1,0 +1,85 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0ce8729cd77e888c3c45700767c5f",
+  "usage": {
+    "input_tokens": 1948,
+    "output_tokens": 374
+  },
+  "answers": {
+    "is_9y_sample_statistically_significant": {
+      "choice": "moderately_significant",
+      "score": null,
+      "confidence": 0.45,
+      "probabilities": {
+        "moderately_significant": 0.64,
+        "insufficient": 0.12,
+        "overwhelmingly_significant": 0.24
+      },
+      "noul": null
+    },
+    "pure_hold_vs_tp_verdict": {
+      "choice": "72_percent_pure_hold",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "72_percent_pure_hold": 0.98,
+        "tp_realistic_intermediate": 0.01,
+        "94_percent_tp": 0.01
+      },
+      "noul": null
+    },
+    "edge_durability_across_market_cycles": {
+      "choice": null,
+      "score": 0.75,
+      "confidence": 0.55,
+      "probabilities": {
+        "0": 0.39,
+        "1": 0.52,
+        "2": 0.05,
+        "3": 0.03,
+        "4": 0.01
+      },
+      "noul": null
+    },
+    "risk_of_depleting_35_dollars": {
+      "choice": "under_1_percent",
+      "score": null,
+      "confidence": 0.93,
+      "probabilities": {
+        "under_1_percent": 0.95,
+        "above_10_percent": 0.02,
+        "between_1_and_5_percent": 0.03
+      },
+      "noul": null
+    },
+    "growth_expectancy_next_12_months": {
+      "choice": "between_300_and_800",
+      "score": null,
+      "confidence": 0.92,
+      "probabilities": {
+        "between_100_and_300": 0.01,
+        "near_breakeven_or_loss": 0.04,
+        "between_300_and_800": 0.95
+      },
+      "noul": null
+    },
+    "deposit_10_claim_25_bonus_action": {
+      "choice": "do_not_deposit",
+      "score": null,
+      "confidence": 0.39,
+      "probabilities": {
+        "strongly_recommend_deposit": 0.11,
+        "do_not_deposit": 0.59,
+        "proceed_with_caution": 0.3
+      },
+      "noul": null
+    },
+    "jev_model_confidence_score": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.67
+    }
+  }
+}

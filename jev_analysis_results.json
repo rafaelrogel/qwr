@@ -1,0 +1,55 @@
+{
+  "strategy_viability": {
+    "choice": "not_viable",
+    "confidence": 0.7,
+    "probabilities": {
+      "not_viable": 0.77,
+      "viable_with_caveats": 0.21,
+      "highly_viable": 0.01,
+      "marginal": 0.01
+    }
+  },
+  "risk_level": {
+    "score": 2.27,
+    "confidence": 0.43,
+    "probabilities": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "overfitting_concern": {
+    "probability": 0.82
+  },
+  "declining_performance": {
+    "probability": 0.74
+  },
+  "stake_scaling_safe": {
+    "probability": 0.28
+  },
+  "recommendation": {
+    "choice": "optimize",
+    "confidence": 0.48,
+    "probabilities": {
+      "paper_trade": 0.06,
+      "reduce_risk": 0.12,
+      "stop": 0.24,
+      "maintain": 0.01,
+      "optimize": 0.5599999999999999,
+      "scale_up": 0.01
+    }
+  },
+  "projected_return_12m": {
+    "choice": "above_1000",
+    "confidence": 0.38,
+    "probabilities": {
+      "loss": 0.02,
+      "100_to_500": 0.09,
+      "500_to_1000": 0.37,
+      "above_1000": 0.5,
+      "breakeven": 0.02
+    }
+  }
+}

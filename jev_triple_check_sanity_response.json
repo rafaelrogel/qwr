@@ -1,0 +1,70 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0cfc9fe5271b3a9c981a5f6a4aeba",
+  "answers": {
+    "item_1_price_cap_verdict": {
+      "choice": "endorse_dual_caps_55c_poly_60c_kalshi",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "force_55c_on_kalshi_too": 0.0,
+        "reject_caps_keep_all_at_65c": 0.0,
+        "endorse_dual_caps_55c_poly_60c_kalshi": 1.0
+      },
+      "noul": null
+    },
+    "item_2_solana_macro_compass_verdict": {
+      "choice": "validated_genuine_lead_lag_shield",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "flawed_edge_disregard_solana": 0.0,
+        "validated_genuine_lead_lag_shield": 1.0,
+        "reject_compass_trade_sol_alone": 0.0
+      },
+      "noul": null
+    },
+    "item_3_taker_flow_veto_verdict": {
+      "choice": "statistically_robust_anti_trap_filter",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "unnecessary_filter_too_few_losses": 0.02,
+        "statistically_robust_anti_trap_filter": 0.98,
+        "use_taker_flow_alone_without_price": 0.0
+      },
+      "noul": null
+    },
+    "overall_system_readiness_verdict": {
+      "choice": "maintain_all_three_rules_in_production",
+      "score": null,
+      "confidence": 0.87,
+      "probabilities": {
+        "revert_all_changes_to_baseline": 0.03,
+        "pause_all_trading": 0.06,
+        "maintain_all_three_rules_in_production": 0.91
+      },
+      "noul": null
+    },
+    "triple_check_audit_rigor_score": {
+      "choice": null,
+      "score": 2.1,
+      "confidence": 0.2,
+      "probabilities": {
+        "0": 0.08,
+        "1": 0.26,
+        "2": 0.17,
+        "3": 0.46,
+        "4": 0.03
+      },
+      "noul": null
+    },
+    "jev_systemic_positive_ev_conviction": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.31
+    }
+  }
+}

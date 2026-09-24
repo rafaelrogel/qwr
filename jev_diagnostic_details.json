@@ -1,0 +1,15 @@
+{
+  "bottleneck": "paper_mode_predominance",
+  "bottleneck_prob": {
+    "paper_mode_predominance": 0.93,
+    "small_sample_and_low_stake": 0.07,
+    "regime_shift_vulnerability": 0.0
+  },
+  "priority_action": "gradual_live_rollout_sol_and_kalshi",
+  "priority_action_prob": {
+    "add_more_macro_assets": 0.0,
+    "loosen_deadband_filters": 0.03,
+    "gradual_live_rollout_sol_and_kalshi": 0.97
+  },
+  "desk1_engine_score": 2.58
+}

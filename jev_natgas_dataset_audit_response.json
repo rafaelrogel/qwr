@@ -1,0 +1,183 @@
+{
+  "timestamp": 1790196242.2793124,
+  "answers": {
+    "mathematical_nature_of_natural_gas": {
+      "choice": "mean_reverting_seasonally_bounded",
+      "score": null,
+      "confidence": 0.98,
+      "probabilities": {
+        "untradable_tail_chaos": 0.01,
+        "mean_reverting_seasonally_bounded": 0.99,
+        "unconstrained_inflation_asset": 0.0
+      },
+      "noul": null
+    },
+    "actionable_quant_edge_natgas": {
+      "choice": "calendar_seasonality_and_storage_spreads",
+      "score": null,
+      "confidence": 0.99,
+      "probabilities": {
+        "simple_trend_following": 0.0,
+        "shorting_volatility_unhedged": 0.0,
+        "calendar_seasonality_and_storage_spreads": 1.0
+      },
+      "noul": null
+    },
+    "ai_datacenter_and_crypto_power_score": {
+      "choice": null,
+      "score": 3.08,
+      "confidence": 0.61,
+      "probabilities": {
+        "0": 0.01,
+        "1": 0.05,
+        "2": 0.08,
+        "3": 0.58,
+        "4": 0.28
+      },
+      "noul": null
+    },
+    "jev_advice_to_algorithmic_traders": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.27
+    }
+  },
+  "natural_gas_statistics": {
+    "sample_period": "1997-01-07 to 2026-09-15 (5,687 daily spot prices)",
+    "mean_price_usd_mmbtu": 3.88,
+    "median_price": 3.2,
+    "std_dev": 2.07,
+    "min_price": 1.21,
+    "max_price": 30.72,
+    "skewness": 2.45,
+    "kurtosis": 12.01,
+    "percentiles": {
+      "10th": 2.1,
+      "25th": 2.62,
+      "50th_median": 3.2,
+      "75th": 4.42,
+      "90th": 6.74,
+      "95th": 8.01,
+      "99th": 11.4
+    },
+    "historical_regimes": {
+      "Pre_Shale_Boom (1997-2008)": {
+        "mean_price": 5.63,
+        "median_price": 5.71,
+        "min_price": 1.4,
+        "max_price": 18.48,
+        "volatility_std": 2.91
+      },
+      "Shale_Glut_Abundance (2009-2020)": {
+        "mean_price": 3.25,
+        "median_price": 3.06,
+        "min_price": 1.33,
+        "max_price": 8.15,
+        "volatility_std": 0.93
+      },
+      "LNG_Export_Globalized_Era (2021-2026)": {
+        "mean_price": 3.69,
+        "median_price": 3.01,
+        "min_price": 1.21,
+        "max_price": 30.72,
+        "volatility_std": 2.09
+      }
+    },
+    "top_10_all_time_spikes": [
+      {
+        "date": "2026-01-23",
+        "price_usd_per_mmbtu": 30.72
+      },
+      {
+        "date": "2026-01-26",
+        "price_usd_per_mmbtu": 25.01
+      },
+      {
+        "date": "2021-02-17",
+        "price_usd_per_mmbtu": 23.86
+      },
+      {
+        "date": "2003-02-25",
+        "price_usd_per_mmbtu": 18.48
+      },
+      {
+        "date": "2026-01-27",
+        "price_usd_per_mmbtu": 17.19
+      },
+      {
+        "date": "2005-09-22",
+        "price_usd_per_mmbtu": 14.84
+      },
+      {
+        "date": "2005-12-12",
+        "price_usd_per_mmbtu": 14.82
+      },
+      {
+        "date": "2005-09-21",
+        "price_usd_per_mmbtu": 14.26
+      },
+      {
+        "date": "2005-12-08",
+        "price_usd_per_mmbtu": 14.25
+      },
+      {
+        "date": "2005-10-27",
+        "price_usd_per_mmbtu": 13.9
+      }
+    ],
+    "monthly_seasonality": {
+      "Jan (Winter)": {
+        "mean": 4.17,
+        "std": 2.52
+      },
+      "Feb (Winter)": {
+        "mean": 3.8,
+        "std": 2.24
+      },
+      "Mar (End Winter)": {
+        "mean": 3.54,
+        "std": 1.81
+      },
+      "Apr (Shoulder)": {
+        "mean": 3.65,
+        "std": 2.09
+      },
+      "May (Shoulder)": {
+        "mean": 3.91,
+        "std": 2.3
+      },
+      "Jun (Summer Cooling)": {
+        "mean": 4.06,
+        "std": 2.42
+      },
+      "Jul (Peak Summer)": {
+        "mean": 3.89,
+        "std": 2.11
+      },
+      "Aug (Peak Summer)": {
+        "mean": 3.78,
+        "std": 1.85
+      },
+      "Sep (Shoulder)": {
+        "mean": 3.91,
+        "std": 2.05
+      },
+      "Oct (Pre-Winter Storage)": {
+        "mean": 3.82,
+        "std": 1.61
+      },
+      "Nov (Early Winter)": {
+        "mean": 3.94,
+        "std": 1.75
+      },
+      "Dec (Winter Heating)": {
+        "mean": 4.08,
+        "std": 1.85
+      }
+    }
+  },
+  "kalshi_edge": "weather_forecast_arbitrage",
+  "widowmaker_lesson": "physical_delivery_and_storage_inelasticity"
+}

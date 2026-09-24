@@ -694,17 +694,23 @@ class LiveTrader:
         ob_primary = get_clob_orderbook(target_token)
         best_bid_primary = ob_primary["best_bid"] if ob_primary else 0.0
         if best_bid_primary >= STOP_LOSS_MIN_BID:
+            try:
+                if self.client:
+                    self.client.cancel_all()
+            except Exception:
+                pass
             real_tok = self.get_token_balance(target_token) if self.execution_mode != "paper" else shares
-            raw_s = real_tok if real_tok > 0 else shares
+            raw_s = real_tok if (real_tok is not None and real_tok >= 0.5) else shares
             sell_shares = int(raw_s * 100) / 100.0
             if sell_shares >= 0.1:
+                sl_limit_price = max(STOP_LOSS_MIN_BID, round(best_bid_primary - 0.02, 2))
                 print(f"    [🚨 STOP-LOSS DE EMERGENCIA]: Ha liquidez para estancar a perda! Best Bid de {target_side}: ${best_bid_primary:.2f} (>= ${STOP_LOSS_MIN_BID:.2f}).")
-                print(f"       Vendendo {sell_shares:.2f} cotas de {target_side} a mercado para resgatar caixa...")
-                sl_res = self.place_live_order(target_token, "SELL", sell_shares, price=best_bid_primary)
+                print(f"       Vendendo {sell_shares:.2f} cotas de {target_side} a mercado (limite: ${sl_limit_price:.2f}) para resgatar caixa...")
+                sl_res = self.place_live_order(target_token, "SELL", sell_shares, price=sl_limit_price)
                 if sl_res and sl_res.get("status") == "SUCCESS":
                     sl_confirmed = True
                     if self.execution_mode != "paper":
-                        time.sleep(1.5)
+                        time.sleep(1.0)
                         rem_tok = self.get_token_balance(target_token)
                         if rem_tok >= sell_shares:
                             print(f"       [ALERTA STOP-LOSS] Ordem aceita pela API mas cotas continuam na carteira ({rem_tok:.2f} cotas). FAK não preenchido.")
@@ -1138,17 +1144,23 @@ class LiveTrader:
 
                         if cur_bid >= min_tp_price and bid_size >= 1.0:
                             print(f"\n    [💰 SIRMARTINGALE TAKE-PROFIT!] Aos {elapsed}s: CLOB Best Bid atingiu ${cur_bid:.2f} (>= ${min_tp_price:.2f}, entrada: ${estimated_price:.2f})!")
+                            try:
+                                if self.client:
+                                    self.client.cancel_all()
+                            except Exception:
+                                pass
                             real_tok = self.get_token_balance(target_token) if self.execution_mode != "paper" else shares
-                            raw_s = real_tok if real_tok > 0 else shares
+                            raw_s = real_tok if (real_tok is not None and real_tok >= 0.5) else shares
                             sell_shares = int(raw_s * 100) / 100.0
                             sell_res = None
+                            tp_limit_price = max(min_tp_price, round(cur_bid - 0.02, 2))
                             if sell_shares >= 0.1 and not self._is_past_deadline(window_ts, 295):
-                                print(f"       Vendendo {sell_shares:.2f} cotas na CLOB para travar lucro garantido (~+{((cur_bid/max(0.01, estimated_price)-1)*100):.0f}%)...")
-                                sell_res = self.place_live_order(target_token, "SELL", sell_shares, price=cur_bid)
+                                print(f"       Vendendo {sell_shares:.2f} cotas na CLOB para travar lucro (Best Bid: ${cur_bid:.2f} | Limite Aceito: ${tp_limit_price:.2f} | ~+{((cur_bid/max(0.01, estimated_price)-1)*100):.0f}%)...")
+                                sell_res = self.place_live_order(target_token, "SELL", sell_shares, price=tp_limit_price)
                             if sell_res and sell_res.get("status") == "SUCCESS":
                                 sell_confirmed = True
                                 if self.execution_mode != "paper":
-                                    time.sleep(1.5)
+                                    time.sleep(1.0)
                                     rem_tok = self.get_token_balance(target_token)
                                     if rem_tok >= sell_shares:
                                         print(f"       [ALERTA TAKE-PROFIT] Ordem aceita pela API mas cotas continuam na carteira ({rem_tok:.2f} cotas). FAK não preenchido.")

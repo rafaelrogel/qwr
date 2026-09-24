@@ -19,7 +19,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FILE = os.path.join(BASE_DIR, "backtest_5y_results_v2.json")
 
 # Configurar API key
-JEV_API_KEY = "apikey_2221ec444158dd114f7c9c1455f7a43d54d3_8650ae9c262528646e523b5b9185b404723800fc38025af60761917b012bed7c"
+from dotenv import load_dotenv; load_dotenv()
+JEV_API_KEY = os.getenv("JEV_API_KEY", os.getenv("TYPESAFE_API_KEY", ""))
 os.environ["TYPESAFE_API_KEY"] = JEV_API_KEY
 
 print("\n" + "=" * 90)

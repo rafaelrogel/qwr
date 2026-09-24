@@ -1,0 +1,91 @@
+{
+  "timestamp": 1790171186.9101832,
+  "answers": {
+    "structural_edge": {
+      "choice": "spurious_overfitting",
+      "score": null,
+      "confidence": 0.63,
+      "probabilities": {
+        "spurious_overfitting": 0.75,
+        "marginal_decaying_edge": 0.1,
+        "genuine_durable_edge": 0.15
+      },
+      "noul": null
+    },
+    "risk_of_ruin_current_bankroll": {
+      "choice": "growth_highly_probable",
+      "score": null,
+      "confidence": 0.64,
+      "probabilities": {
+        "high_ruin_risk": 0.05,
+        "growth_highly_probable": 0.76,
+        "moderate_ruin_risk": 0.19
+      },
+      "noul": null
+    },
+    "why_did_returns_slow_in_2024_2025": {
+      "choice": "volatility_compression",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "market_maker_efficiency": 0.01,
+        "volatility_compression": 0.98,
+        "strategy_breakdown": 0.01
+      },
+      "noul": null
+    },
+    "optimal_bankroll_management": {
+      "choice": "keep_flat_1_dollar",
+      "score": null,
+      "confidence": 0.35,
+      "probabilities": {
+        "keep_flat_1_dollar": 0.57,
+        "aggressive_scaling": 0.01,
+        "reduce_to_50_cents": 0.42
+      },
+      "noul": null
+    },
+    "timeline_to_50_usdc": {
+      "choice": "two_to_four_weeks",
+      "score": null,
+      "confidence": 0.22,
+      "probabilities": {
+        "two_to_four_weeks": 0.48,
+        "over_a_month": 0.19,
+        "one_to_two_weeks": 0.33
+      },
+      "noul": null
+    },
+    "final_verdict_instruction": {
+      "choice": "pause_and_paper_trade",
+      "score": null,
+      "confidence": 0.44,
+      "probabilities": {
+        "continue_live_trading": 0.25,
+        "pause_and_paper_trade": 0.63,
+        "halt_operations": 0.12
+      },
+      "noul": null
+    },
+    "edge_durability_score": {
+      "choice": null,
+      "score": 1.8,
+      "confidence": 0.3,
+      "probabilities": {
+        "0": 0.15,
+        "1": 0.22,
+        "2": 0.32,
+        "3": 0.3,
+        "4": 0.01
+      },
+      "noul": null
+    },
+    "jev_confidence_level": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.52
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0cebbdda874339308ea65e01246ba",
+  "usage": {
+    "input_tokens": 3178,
+    "output_tokens": 361
+  },
+  "answers": {
+    "most_exploitable_cross_asset_edge": {
+      "choice": "equity_futures_clean_drift",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "gold_spot_drift_arbitrage": 0.01,
+        "multi_market_binary_basket": 0.0,
+        "equity_futures_clean_drift": 0.98,
+        "polymarket_sol_xrp_inefficiency": 0.01
+      },
+      "noul": null
+    },
+    "best_altcoin_expansion_target": {
+      "choice": "sol_solana_markets",
+      "score": null,
+      "confidence": 0.53,
+      "probabilities": {
+        "eth_ethereum_markets": 0.14,
+        "xrp_ripple_markets": 0.01,
+        "sol_solana_markets": 0.64,
+        "remain_btc_exclusive": 0.21
+      },
+      "noul": null
+    },
+    "gold_and_equities_dichotomy": {
+      "choice": "fade_prior_candle_ride_intra_drift",
+      "score": null,
+      "confidence": 0.92,
+      "probabilities": {
+        "mean_reversion_scalp_only": 0.0,
+        "fade_prior_candle_ride_intra_drift": 0.95,
+        "pure_intra_candle_momentum": 0.05
+      },
+      "noul": null
+    },
+    "cross_asset_diversification_benefit": {
+      "choice": null,
+      "score": 1.52,
+      "confidence": 0.44,
+      "probabilities": {
+        "0": 0.1,
+        "1": 0.37,
+        "2": 0.44,
+        "3": 0.08,
+        "4": 0.01
+      },
+      "noul": null
+    },
+    "top_strategic_recommendation": {
+      "choice": "build_sp500_nasdaq_engine",
+      "score": null,
+      "confidence": 0.71,
+      "probabilities": {
+        "add_solana_to_polymarket_bot": 0.03,
+        "build_sp500_nasdaq_engine": 0.78,
+        "develop_gold_binary_engine": 0.11,
+        "scale_btc_parameters_first": 0.08
+      },
+      "noul": null
+    },
+    "jev_confidence_cross_asset": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.21
+    }
+  },
+  "datasets_analyzed": {
+    "gold_5m": "500,000 candles (2003-2026), 91.7% win rate at >=5 bps drift",
+    "es_sp500_5y": "353,206 bars, 97.3% win rate at >=5 bps drift",
+    "nq_nasdaq_5y": "329,458 bars, 97.3% win rate at >=5 bps drift",
+    "eurusd_1m": "189,680 bars",
+    "polymarket_crypto": "BTC, ETH, SOL, XRP 5m/15m tick orderbook samples"
+  }
+}

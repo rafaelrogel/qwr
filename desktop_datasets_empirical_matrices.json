@@ -1,0 +1,131 @@
+{
+  "btc_5m_order_flow_edge": {
+    "sample_size": 50000,
+    "taker_buy_dominant_winrate": "11599/14396 (80.6%)",
+    "taker_sell_dominant_winrate": "11797/14825 (79.6%)",
+    "neutral_flow_distribution": "Up: 10493, Down: 10286"
+  },
+  "multi_timeframe_btc_dynamics": {
+    "1m": {
+      "total_historical_bars": 4767549,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 4.3,
+      "consecutive_continuation_rate": "52.9%",
+      "mean_reversion_rate": "47.1%"
+    },
+    "3m": {
+      "total_historical_bars": 1589192,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 9.0,
+      "consecutive_continuation_rate": "50.6%",
+      "mean_reversion_rate": "49.4%"
+    },
+    "5m": {
+      "total_historical_bars": 953521,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 11.9,
+      "consecutive_continuation_rate": "49.2%",
+      "mean_reversion_rate": "50.8%"
+    },
+    "15m": {
+      "total_historical_bars": 317847,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 28.2,
+      "consecutive_continuation_rate": "48.1%",
+      "mean_reversion_rate": "51.9%"
+    },
+    "30m": {
+      "total_historical_bars": 158931,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 41.8,
+      "consecutive_continuation_rate": "48.1%",
+      "mean_reversion_rate": "51.9%"
+    },
+    "1h": {
+      "total_historical_bars": 79475,
+      "analyzed_bars": 20000,
+      "avg_candle_range_bps": 65.3,
+      "consecutive_continuation_rate": "47.8%",
+      "mean_reversion_rate": "52.2%"
+    }
+  },
+  "altcoin_micro_dynamics": {
+    "SOLUSDT": {
+      "M5": {
+        "bars": 377445,
+        "avg_range_bps": 40.7,
+        "strong_move_followthrough_pct": "49.5% (4762/9620)"
+      },
+      "M15": {
+        "bars": 125816,
+        "avg_range_bps": 85.9,
+        "strong_move_followthrough_pct": "47.6% (5845/12279)"
+      }
+    },
+    "ETHUSDT": {
+      "M5": {
+        "bars": 689960,
+        "avg_range_bps": 21.8,
+        "strong_move_followthrough_pct": "50.1% (3065/6123)"
+      },
+      "M15": {
+        "bars": 229993,
+        "avg_range_bps": 37.4,
+        "strong_move_followthrough_pct": "47.2% (4314/9131)"
+      }
+    },
+    "XRPUSDT": {
+      "M5": {
+        "bars": 615569,
+        "avg_range_bps": 26.6,
+        "strong_move_followthrough_pct": "48.5% (3152/6493)"
+      },
+      "M15": {
+        "bars": 205193,
+        "avg_range_bps": 45.4,
+        "strong_move_followthrough_pct": "46.7% (4512/9670)"
+      }
+    },
+    "DOGEUSDT": {
+      "M5": {
+        "bars": 493110,
+        "avg_range_bps": 42.1,
+        "strong_move_followthrough_pct": "49.2% (3834/7793)"
+      },
+      "M15": {
+        "bars": 164372,
+        "avg_range_bps": 62.5,
+        "strong_move_followthrough_pct": "46.9% (5029/10713)"
+      }
+    },
+    "AVAXUSDT": {
+      "M5": {
+        "bars": 365343,
+        "avg_range_bps": 38.9,
+        "strong_move_followthrough_pct": "48.4% (4635/9567)"
+      },
+      "M15": {
+        "bars": 121782,
+        "avg_range_bps": 82.5,
+        "strong_move_followthrough_pct": "46.2% (5658/12260)"
+      }
+    },
+    "LINKUSDT": {
+      "M5": {
+        "bars": 541890,
+        "avg_range_bps": 34.3,
+        "strong_move_followthrough_pct": "49.8% (4507/9045)"
+      },
+      "M15": {
+        "bars": 180632,
+        "avg_range_bps": 70.5,
+        "strong_move_followthrough_pct": "48.5% (5777/11921)"
+      }
+    }
+  },
+  "gold_token_paxg": {
+    "total_daily_bars": 1658,
+    "period": "2022-03-08 to 2026-09-22",
+    "volatility_profile": "Baixa correla\u00e7\u00e3o com choques de liquida\u00e7\u00e3o alavancada do BTC"
+  }
+}

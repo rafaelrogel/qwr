@@ -1,0 +1,145 @@
+{
+  "model": "jev-1.13.0",
+  "request_id": "req_01a0cfae02de7e06810c70b07ab53756",
+  "answers": {
+    "unified_master_alpha_mechanism": {
+      "choice": "intra_candle_drift_with_anti_reversion_defense",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "macro_correlation_flow": 0.0,
+        "statistical_fluke_regime_luck": 0.0,
+        "intra_candle_drift_with_anti_reversion_defense": 1.0,
+        "retail_clob_orderbook_inefficiency_alone": 0.0
+      },
+      "noul": null
+    },
+    "microstructure_vs_ohlc_paradox": {
+      "choice": "the_binary_resolution_timing_asymmetry",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "the_binary_resolution_timing_asymmetry": 0.98,
+        "data_mining_selection_bias": 0.01,
+        "prediction_market_odd_mispricing": 0.01
+      },
+      "noul": null
+    },
+    "altcoin_transmission_and_lead_lag": {
+      "choice": "btc_macro_compass_sol_volatility_harvester",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "btc_macro_compass_sol_volatility_harvester": 1.0,
+        "stick_exclusively_to_btc": 0.0,
+        "trade_altcoins_completely_independent": 0.0
+      },
+      "noul": null
+    },
+    "optimal_100_dollar_capital_allocation": {
+      "choice": "60_btc_live_25_sol_live_15_kalshi",
+      "score": null,
+      "confidence": 0.76,
+      "probabilities": {
+        "60_btc_live_25_sol_live_15_kalshi": 0.82,
+        "100_percent_btc_live": 0.16,
+        "50_sol_50_btc": 0.0,
+        "33_equal_split_all_three": 0.02
+      },
+      "noul": null
+    },
+    "cross_dataset_hidden_vulnerability": {
+      "choice": "overpriced_entry_slippage_in_extreme_vol",
+      "score": null,
+      "confidence": 0.93,
+      "probabilities": {
+        "sudden_mean_reversion_cascade": 0.05,
+        "overpriced_entry_slippage_in_extreme_vol": 0.95,
+        "exchange_smart_contract_failure": 0.0,
+        "oracle_latency_arbitrage_by_hft": 0.0
+      },
+      "noul": null
+    },
+    "unified_system_institutional_score": {
+      "choice": null,
+      "score": 0.39,
+      "confidence": 0.68,
+      "probabilities": {
+        "0": 0.68,
+        "1": 0.27,
+        "2": 0.04,
+        "3": 0.01,
+        "4": 0.0
+      },
+      "noul": null
+    },
+    "jev_systemic_positive_ev_conviction": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.05
+    }
+  },
+  "dossier": {
+    "title": "JEV DEEP CROSS-RELATIONAL SYNTHESIS & UNIFIED QUANTITATIVE ALPHA MATRIX",
+    "scope": "Interconnecting 7 Core Datasets and 3 Live/Paper Execution Engines",
+    "datasets_interconnected": {
+      "dataset_1_btc_9year_full_history": {
+        "timeframe": "15m / 5m (Aug 2017 - Sep 2026, 318,570 15m windows, 953k 5m bars)",
+        "empirical_properties": {
+          "candle_to_candle_autocorrelation": "48.1% to 49.2% (Mean-Reverting Random Walk at boundaries)",
+          "intra_candle_midpoint_drift": "76.5% to 83.0% continuation when |Delta| >= 5.0 bps (Zero-Lookahead)",
+          "prior_candle_alignment": "Trend continuation filter adds +7.4 pp win rate vs counter-trend repiques",
+          "volatility_sweet_spot": "3.5 to 8.0 bps drift delivers highest risk-adjusted EV"
+        }
+      },
+      "dataset_2_btc_order_flow_cvd_taker": {
+        "source": "BTCUSDT 1m and 5m granular taker buy base volume (79,018 windows)",
+        "empirical_properties": {
+          "pure_taker_alone_at_120s": "67.5% continuation (Zero-Lookahead)",
+          "price_delta_alone_at_120s": "83.01% continuation (25,386 / 30,583)",
+          "delta_plus_taker_confirmation": "85.60% continuation (+2.6 pp boost)",
+          "delta_opposing_taker_divergence": "77.70% continuation (-5.3 pp trap penalty)"
+        }
+      },
+      "dataset_3_altcoins_m5_m15_235_pairs": {
+        "source": "C:\\Users\\rafae\\Desktop\\Datasets (SOL, ETH, XRP, DOGE, AVAX, LINK)",
+        "empirical_properties": {
+          "solana_range_bps": "40.7 bps M5 average range (3.4x higher than BTC's 11.9 bps)",
+          "dogecoin_range_bps": "42.1 bps M5 range (extreme retail noise)",
+          "ethereum_range_bps": "21.8 bps M5 range (tightest spread, purest BTC correlation)",
+          "xrp_range_bps": "26.6 bps M5 range (strong 53.3% mean-reversion tendency)"
+        }
+      },
+      "dataset_4_macro_cross_assets": {
+        "sources": "S&P 500 ES Futures, Nasdaq NQ Futures, Gold Spot XAU/USD & PAXG, EUR/USD",
+        "empirical_properties": {
+          "equity_futures_es_nq": "76.6% - 81.3% drift continuation at 33% bar point; 94.6% at 66%",
+          "gold_spot_and_paxg": "78.1% - 84.1% drift continuation; 53.3% bar-to-bar mean reversion; uncorrelated to crypto margin flushes",
+          "eurusd_forex": "88% drift continuation with lowest relative intraday variance"
+        }
+      },
+      "dataset_5_polymarket_clob_microstructure": {
+        "source": "PolyResearch L2 Parquet Orderbooks (BTC, ETH, SOL, XRP)",
+        "empirical_properties": {
+          "btc_clob_depth": "73,000 shares ($0.0104 spread, $0.0030 microprice disparity)",
+          "sol_clob_depth": "36,700 shares ($0.0142 spread, $0.0040 microprice disparity - 33% higher mispricing)",
+          "eth_clob_depth": "42,000 shares ($0.0102 spread, lowest altcoin friction)"
+        }
+      },
+      "dataset_6_kalshi_cftc_institutional": {
+        "source": "Kalshi API v2 RSA-PSS KXBTC15M Orderbooks",
+        "empirical_properties": {
+          "pricing_structure": "Strike floor (K) fixed at open, 900s candle duration, decision point 450s",
+          "friction_cap": "Tickets over 60c offer negative EV; contracts under 50c offer positive EV"
+        }
+      },
+      "dataset_7_live_and_paper_execution_telemetry": {
+        "bot_1_btc_5m_live": "133 cycles, 95W / 38L (71.4% WR), $20.80 balance (99.07% deposit recovered), SirMartingale Take-Profit at 74c-78c saving late reversals",
+        "bot_2_sol_5m_paper": "2 trades, 2W / 0L (100% WR), $29.07 balance (+16.3% ROI), captured 25.1c mispricing and 94c take-profit",
+        "bot_3_kalshi_15m_paper": "1 trade, 1W / 0L (100% WR), $35.38 balance, 3 Jev defensive vetos saving $3.00, Real Account connected ($11.36)"
+      }
+    }
+  }
+}

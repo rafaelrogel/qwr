@@ -1,0 +1,22 @@
+{
+  "verdict_15m": "forget_it_noise",
+  "confidence_15m": 1.0,
+  "probabilities_15m": {
+    "test_longer_timeframes": 0.0,
+    "implement_on_15m": 0.0,
+    "forget_it_noise": 1.0
+  },
+  "min_timeframe": "one_hour_or_higher",
+  "advice": 0.59,
+  "empirical_15m": {
+    "total_bars_15m": 112019,
+    "us_session_bars_15m": 27341,
+    "corr_global_15m": 0.0027,
+    "corr_us_15m": 0.0049,
+    "lead_lag_global_15m": -0.0046,
+    "lead_lag_us_15m": -0.0011,
+    "baseline_wr_15m": 47.12,
+    "filtered_wr_15m": 47.23,
+    "conflict_wr_15m": 46.96
+  }
+}

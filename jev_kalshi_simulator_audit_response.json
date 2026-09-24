@@ -1,0 +1,68 @@
+{
+  "timestamp": 1790197110.5425901,
+  "answers": {
+    "authenticity_of_eia_thermal_edge": {
+      "choice": "spurious_overfitting",
+      "score": null,
+      "confidence": 0.54,
+      "probabilities": {
+        "durable_thermodynamic_edge": 0.3,
+        "spurious_overfitting": 0.69,
+        "unexecutable_due_to_liquidity": 0.01
+      },
+      "noul": null
+    },
+    "kalshi_execution_recommendation": {
+      "choice": "wednesday_afternoon_sweet_spot",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "wednesday_afternoon_sweet_spot": 0.97,
+        "monday_morning_early_bird": 0.01,
+        "thursday_morning_seconds_before": 0.02
+      },
+      "noul": null
+    },
+    "strategy_robustness_score": {
+      "choice": null,
+      "score": 1.5,
+      "confidence": 0.43,
+      "probabilities": {
+        "0": 0.1,
+        "1": 0.39,
+        "2": 0.42,
+        "3": 0.09,
+        "4": 0.0
+      },
+      "noul": null
+    },
+    "jev_confidence_level": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.43
+    },
+    "jev_advice_to_algorithmic_traders": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.43
+    }
+  },
+  "simulation_summary": {
+    "simulation_period": "2013-01-04 to 2026-09-11",
+    "total_trades": 573,
+    "wins": 392,
+    "losses": 181,
+    "win_rate_pct": 68.41,
+    "initial_bankroll": 1000.0,
+    "final_bankroll": 5521.15,
+    "net_profit_usd": 4521.15,
+    "total_roi_pct": 452.12,
+    "profit_factor": 2.0,
+    "max_drawdown_pct": -7.55,
+    "annualized_sharpe_ratio": 2.54
+  }
+}

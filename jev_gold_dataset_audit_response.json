@@ -1,0 +1,99 @@
+{
+  "timestamp": 1790195552.0535483,
+  "answers": {
+    "macro_regime_nature_of_gold": {
+      "choice": "monetary_debasement_hedge",
+      "score": null,
+      "confidence": 0.96,
+      "probabilities": {
+        "cyclical_commodity_speculation": 0.03,
+        "monetary_debasement_hedge": 0.97,
+        "stagnant_dead_capital": 0.0
+      },
+      "noul": null
+    },
+    "gold_vs_bitcoin_store_of_value": {
+      "choice": "complementary_dual_hedge",
+      "score": null,
+      "confidence": 0.51,
+      "probabilities": {
+        "complementary_dual_hedge": 0.67,
+        "bitcoin_superior_absorption": 0.01,
+        "gold_unrivaled_durability": 0.32
+      },
+      "noul": null
+    },
+    "current_valuation_regime_score": {
+      "choice": null,
+      "score": 3.05,
+      "confidence": 0.49,
+      "probabilities": {
+        "0": 0.03,
+        "1": 0.07,
+        "2": 0.04,
+        "3": 0.53,
+        "4": 0.33
+      },
+      "noul": null
+    },
+    "jev_deep_insights_gold": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.26
+    }
+  },
+  "regime_statistics": {
+    "Classical_Gold_Standard (1833-1933)": {
+      "start_year": 1833,
+      "end_year": 1933,
+      "start_price_usd": 18.93,
+      "end_price_usd": 26.33,
+      "total_return_pct": 39.09,
+      "cagr_pct": 0.33,
+      "annual_volatility_pct": 3.95
+    },
+    "Bretton_Woods_Fixed (1934-1971)": {
+      "start_year": 1934,
+      "end_year": 1971,
+      "start_price_usd": 34.69,
+      "end_price_usd": 41.0,
+      "total_return_pct": 18.19,
+      "cagr_pct": 0.47,
+      "annual_volatility_pct": 6.71
+    },
+    "Fiat_Free_Float (1971-2025)": {
+      "start_year": 1971,
+      "end_year": 2025,
+      "start_price_usd": 41.0,
+      "end_price_usd": 3442.0,
+      "total_return_pct": 8295.12,
+      "cagr_pct": 8.55,
+      "annual_volatility_pct": 23.64
+    },
+    "Modern_Era_21st_Century (2000-2025)": {
+      "start_year": 2000,
+      "end_year": 2025,
+      "start_price_usd": 279.0,
+      "end_price_usd": 3442.0,
+      "total_return_pct": 1133.69,
+      "cagr_pct": 10.57,
+      "annual_volatility_pct": 14.43
+    },
+    "Recent_Expansion (2020-2026)": {
+      "start_date": "2020-01",
+      "end_date": "2026-08",
+      "start_price_usd": 1561.0,
+      "end_price_usd": 4411.0,
+      "total_gain_pct": 182.58
+    }
+  },
+  "key_takeaway": "fiat_devaluation_monotonic_drift",
+  "actionable_model": "multi_month_trend_following",
+  "model_probabilities": {
+    "cross_asset_lead_lag_with_crypto": 0.02,
+    "mean_reversion_to_production_cost": 0.0,
+    "multi_month_trend_following": 0.98
+  }
+}

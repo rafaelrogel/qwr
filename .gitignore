@@ -55,12 +55,18 @@ latest_*.json
 btc_*_cache.json
 sources.json
 prr_token.json
+*_live_market_state.json
+kalshi_live_weather_signal.json
 
 # Dataset Subdirectories
 kachoio_crypto_5m/
 kaggle_dataset/
 PolyResearch_Crypto_Sample/
 stockfries_hedgefund_13fdata_byStockPosition_2018to2026/
+climate_dataset/
+gold_prices_dataset/
+natural_gas_dataset/
+*.xls
 
 # ==========================================
 # Logs & System Files
