@@ -72,7 +72,7 @@ def load_env_config() -> Dict[str, str]:
     return cfg
 
 ENV_CFG = load_env_config()
-EXECUTION_MODE = ENV_CFG.get("NATGAS_15M_MODE", "LIVE").upper()
+EXECUTION_MODE = ENV_CFG.get("NATGAS_15M_MODE", "PAPER").upper()
 KALSHI_KEY_ID = ENV_CFG.get("KALSHI_KEY_ID", "")
 raw_key_path = ENV_CFG.get("KALSHI_PRIVATE_KEY_PATH", "kalshi.txt")
 KALSHI_PRIVATE_KEY_PATH = raw_key_path if os.path.isabs(raw_key_path) else os.path.join(BASE_DIR, raw_key_path)
@@ -283,7 +283,7 @@ class KalshiNatGasTrader15M:
         self.client = KalshiClient(KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH)
         self.kalshi_client = self.client
         self.mode = EXECUTION_MODE
-        self.balance = 9.05 # fallback Shard 2
+        self.balance = 100.00 if self.mode != "LIVE" else 9.05
         self.current_open_position = None
         if self.mode == "LIVE":
             b_info = self.client.get_real_balance()
@@ -297,7 +297,7 @@ class KalshiNatGasTrader15M:
                     data = json.load(f)
                     self.current_open_position = data.get("open_position")
                     if self.mode != "LIVE":
-                        self.balance = data.get("current_balance", self.balance)
+                        self.balance = data.get("current_balance", 100.00)
                     else:
                         b_info = self.client.get_real_balance()
                         real_s2 = b_info.get("shard2_balance")

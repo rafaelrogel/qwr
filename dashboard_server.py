@@ -243,7 +243,7 @@ GLOBAL_STATE = {
     "natgas_15m_radar": {
         "asset": "NATGAS",
         "series": "KXNATGAS15M",
-        "mode": ENV_CFG.get("NATGAS_15M_MODE", "LIVE").upper(),
+        "mode": ENV_CFG.get("NATGAS_15M_MODE", "PAPER").upper(),
         "spot": 3.348,
         "strike": 3.345,
         "delta": 0.003,
@@ -255,6 +255,7 @@ GLOBAL_STATE = {
         "prior_candle_bps": 39.0,
         "ticker": "KXNATGAS15M-ACTIVE",
         "status_signal": "AGUARDANDO PONTO QUANTITATIVO (450s)",
+        "paper_balance": 100.0,
         "total_trades": 0,
         "wins": 0,
         "losses": 0,
@@ -506,12 +507,24 @@ def background_feeds_worker():
             except Exception:
                 pass
 
-        # Desk 5: NatGas 15m Live State
+        # Desk 5: NatGas 15m Live State & Journal
         if os.path.exists(NATGAS_15M_LIVE_STATE_JSON):
             try:
                 with open(NATGAS_15M_LIVE_STATE_JSON, "r", encoding="utf-8") as f:
                     ng15_state = json.load(f)
                     GLOBAL_STATE["natgas_15m_radar"].update(ng15_state)
+            except Exception:
+                pass
+
+        if os.path.exists(JOURNAL_NATGAS_15M_JSON):
+            try:
+                with open(JOURNAL_NATGAS_15M_JSON, "r", encoding="utf-8") as f:
+                    ng15_j = json.load(f)
+                    GLOBAL_STATE["natgas_15m_radar"]["paper_balance"] = float(ng15_j.get("current_balance", 100.0))
+                    GLOBAL_STATE["natgas_15m_radar"]["total_trades"] = int(ng15_j.get("total_trades", len(ng15_j.get("trades", []))))
+                    GLOBAL_STATE["natgas_15m_radar"]["wins"] = int(ng15_j.get("wins", 0))
+                    GLOBAL_STATE["natgas_15m_radar"]["losses"] = int(ng15_j.get("losses", 0))
+                    GLOBAL_STATE["natgas_15m_radar"]["win_rate"] = float(ng15_j.get("win_rate", 0.0))
             except Exception:
                 pass
 
@@ -1393,9 +1406,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <span class="dot-pulse" style="background: var(--neon-amber); color: var(--neon-amber);"></span>
                 <span>DESK 4: NATGAS EIA STANDBY</span>
             </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
-                <span>DESK 5: NATGAS 15M LIVE</span>
+            <div class="status-chip" id="chipDesk5">
+                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
+                <span>DESK 5: NATGAS 15M PAPER</span>
             </div>
             <div class="status-chip mono" id="clockUTC" style="color: var(--neon-amber); font-weight: 600;">
                 UTC: --:--:--
@@ -2273,6 +2286,26 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                 // Desk 5: Kalshi NatGas 15m Card
                 const ng15 = data.natgas_15m_radar || {};
+                const ng15Mode = (ng15.mode || 'PAPER').toUpperCase();
+                const chipDesk5 = document.getElementById('chipDesk5');
+                if (chipDesk5) {
+                    if (ng15Mode === 'LIVE') {
+                        chipDesk5.innerHTML = '<span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span><span>DESK 5: NATGAS 15M LIVE</span>';
+                    } else {
+                        chipDesk5.innerHTML = '<span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span><span>DESK 5: NATGAS 15M PAPER</span>';
+                    }
+                }
+                const bNatgas15m = document.getElementById('natgas15mBadge');
+                if (bNatgas15m) {
+                    if (ng15Mode === 'LIVE') {
+                        bNatgas15m.className = 'desk-mode-tag mode-live';
+                        bNatgas15m.innerText = '● REAL MONEY (CFTC KALSHI)';
+                    } else {
+                        bNatgas15m.className = 'desk-mode-tag mode-paper';
+                        bNatgas15m.innerText = '● SIMULAÇÃO PAPER (API REAL)';
+                    }
+                }
+
                 if (document.getElementById('ng15Ticker')) document.getElementById('ng15Ticker').innerText = ng15.ticker || 'KXNATGAS15M';
                 if (document.getElementById('ng15Timer')) document.getElementById('ng15Timer').innerText = `Restam: ${ng15.seconds_left || 0}s`;
                 if (document.getElementById('ng15Progress')) document.getElementById('ng15Progress').style.width = `${ng15.progress_pct || 0}%`;
@@ -2287,10 +2320,26 @@ HTML_CONTENT = """<!DOCTYPE html>
                     ng15DeltaEl.style.color = ng15Delta >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
                 }
                 if (document.getElementById('ng15Deadband')) document.getElementById('ng15Deadband').innerText = `Deadband: 10.0 bps ($${Number(ng15.deadband || 0.003).toFixed(4)})`;
-                if (document.getElementById('ng15RealBal')) document.getElementById('ng15RealBal').innerText = `$${shard2Val} USD`;
-                if (document.getElementById('ng15ConsolSubDesk')) document.getElementById('ng15ConsolSubDesk').innerText = `$${totalConsolVal} USD`;
+
+                if (document.getElementById('ng15RealBal')) {
+                    if (ng15Mode === 'LIVE') {
+                        document.getElementById('ng15RealBal').innerText = `$${shard2Val} USD`;
+                        document.getElementById('ng15RealBal').style.color = 'var(--neon-green)';
+                    } else {
+                        const pBal = ng15.paper_balance !== undefined ? Number(ng15.paper_balance).toFixed(2) : (ng15.balance !== undefined ? Number(ng15.balance).toFixed(2) : '100.00');
+                        document.getElementById('ng15RealBal').innerText = `$${pBal} USD`;
+                        document.getElementById('ng15RealBal').style.color = 'var(--neon-purple)';
+                    }
+                }
+                if (document.getElementById('ng15ConsolSubDesk')) {
+                    if (ng15Mode === 'LIVE') {
+                        document.getElementById('ng15ConsolSubDesk').innerText = `Consolidado: $${totalConsolVal} USD`;
+                    } else {
+                        document.getElementById('ng15ConsolSubDesk').innerText = `Paper (Shard 2 Real: $${shard2Val} USD)`;
+                    }
+                }
                 if (document.getElementById('ng15Banner')) {
-                    document.getElementById('ng15Banner').innerHTML = `<strong>Status Quantitativo 15m:</strong>&nbsp;${ng15.status_signal || ''}`;
+                    document.getElementById('ng15Banner').innerHTML = `<strong>Status Quantitativo 15m (${ng15Mode}):</strong>&nbsp;${ng15.status_signal || ''}`;
                 }
 
                 // Render Tables
