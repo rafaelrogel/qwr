@@ -385,6 +385,14 @@ class SolanaTrader5M:
         remaining_sec = max(0, 300 - elapsed_sec)
         dt_str = datetime.fromtimestamp(window_ts, timezone.utc).strftime("%H:%M:%S")
 
+        # Verificacao de Kill-Switch Global via Arquivo ('HALT' ou 'EMERGENCY_STOP')
+        halt_file = os.path.join(BASE_DIR, "HALT")
+        emergency_file = os.path.join(BASE_DIR, "EMERGENCY_STOP")
+        if os.path.exists(halt_file) or os.path.exists(emergency_file):
+            print(f"\n    [🚨 KILL-SWITCH GLOBAL ATIVADO]: Arquivo de emergencia detectado. Nenhuma ordem sera aberta.")
+            time.sleep(10)
+            return
+
         if window_ts in self.traded_windows:
             time.sleep(5)
             return

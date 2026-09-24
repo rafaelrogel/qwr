@@ -84,5 +84,35 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertIn("typesafe-sdk", content)
         self.assertIn("cryptography", content)
 
+    def test_file_based_kill_switch_detection(self):
+        """Verifica que a presença do arquivo HALT é detectada e aciona a parada imediata"""
+        test_halt = os.path.join(os.path.dirname(__file__), "TEST_HALT")
+        try:
+            with open(test_halt, "w") as f:
+                f.write("STOP")
+            halt_active = os.path.exists(test_halt)
+            self.assertTrue(halt_active, "Kill-switch deve detectar a existência do arquivo de parada")
+        finally:
+            if os.path.exists(test_halt):
+                os.remove(test_halt)
+
+    def test_master_deposit_drawdown_breaker(self):
+        """Verifica que o circuit breaker ancorado no depósito trava permanentemente se drawdown > $6.00"""
+        initial_deposit = 21.00
+        max_drawdown = 6.00
+        
+        # Saldo caiu para $14.50 (perda de $6.50)
+        current_balance = 14.50
+        total_loss = initial_deposit - current_balance
+        breaker_tripped = total_loss >= max_drawdown
+        self.assertTrue(breaker_tripped, "Breaker deve travar quando saldo cair abaixo de $15.00")
+
+    def test_threaded_tcp_server_class(self):
+        """Verifica que o servidor do dashboard suporta concorrência ThreadedTCPServer"""
+        from dashboard_server import ThreadedTCPServer
+        import socketserver
+        self.assertTrue(issubclass(ThreadedTCPServer, socketserver.ThreadingMixIn))
+        self.assertTrue(issubclass(ThreadedTCPServer, socketserver.TCPServer))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

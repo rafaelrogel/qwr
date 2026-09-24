@@ -285,6 +285,14 @@ class KalshiTrader15M:
         elapsed_sec = (minute % 15) * 60 + second
         remaining_sec = 900 - elapsed_sec
 
+        # Verificacao de Kill-Switch Global via Arquivo ('HALT' ou 'EMERGENCY_STOP')
+        halt_file = os.path.join(BASE_DIR, "HALT")
+        emergency_file = os.path.join(BASE_DIR, "EMERGENCY_STOP")
+        if os.path.exists(halt_file) or os.path.exists(emergency_file):
+            print(f"\n    [🚨 KILL-SWITCH GLOBAL ATIVADO]: Arquivo de emergencia detectado. Nenhuma ordem sera aberta na Kalshi.")
+            time.sleep(15)
+            return
+
         print("\n" + "=" * 80)
         print(f" [KALSHI 15M] Janela Ativa: {now_utc.strftime('%Y-%m-%d')} {now_utc.hour:02d}:{window_minute:02d}:00 UTC")
         print(f" Tempo Decorrido: {elapsed_sec}s / 900s | Restam: {remaining_sec}s | Modo: {self.mode}")

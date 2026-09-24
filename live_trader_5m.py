@@ -792,7 +792,24 @@ class LiveTrader:
             time.sleep(min(wait_time, 15))
             return
 
-        # 0. Verificacao de Geoblock em Tempo Real
+        # -1. Verificacao de Kill-Switch Global via Arquivo ('HALT' ou 'EMERGENCY_STOP')
+        halt_file = os.path.join(BASE_DIR, "HALT")
+        emergency_file = os.path.join(BASE_DIR, "EMERGENCY_STOP")
+        if os.path.exists(halt_file) or os.path.exists(emergency_file):
+            print(f"\n    [🚨 KILL-SWITCH GLOBAL ATIVADO]: Arquivo de emergencia ('HALT'/'EMERGENCY_STOP') detectado. Nenhuma ordem sera aberta.")
+            time.sleep(10)
+            return
+
+        # 0. Protecao Mestre contra Drawdown Absoluto do Deposito ($21.00)
+        MAX_TOTAL_DRAWDOWN = 6.00 # Se cair de $21.00 para <= $15.00, trava permanentemente
+        cur_bal_check = self.get_usdc_balance()
+        if cur_bal_check > 0 and (self.initial_deposit - cur_bal_check) >= MAX_TOTAL_DRAWDOWN:
+            self.is_halted = True
+            self.halt_reason = f"DRAWDOWN MESTRE ATINGIDO: Saldo (${cur_bal_check:.2f}) caiu >= ${MAX_TOTAL_DRAWDOWN:.2f} do deposito original (${self.initial_deposit:.2f})."
+            print(f"\n[🚨 CIRCUIT BREAKER MESTRE]: {self.halt_reason}")
+            return
+
+        # 0.1. Verificacao de Geoblock em Tempo Real
         geo = check_geoblock()
         if geo.get("blocked", False):
             print(f"\n[GEOBLOCK BLOQUEADO]: IP {geo.get('ip')} ({geo.get('country')}) esta bloqueado para ordens!")

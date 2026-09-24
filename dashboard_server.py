@@ -2133,6 +2133,10 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
 def run_server():
     btc_engine.start_loop()
 
@@ -2140,14 +2144,17 @@ def run_server():
     t_feeds = threading.Thread(target=background_feeds_worker, daemon=True)
     t_feeds.start()
 
+    sol_mode = ENV_CFG.get('SOL_MODE', 'PAPER').upper()
+    kalshi_mode = ENV_CFG.get('KALSHI_MODE', 'PAPER').upper()
+
     print("=" * 75)
     print(f"-> ANTIGRAVITY QUANT DESK rodando em http://localhost:{PORT}")
     print(f"-> Polymarket BTC 5m [LIVE] | Funder: {FUNDER_ADDR}")
-    print(f"-> Polymarket SOL 5m [{ENV_CFG.get('SOL_MODE', 'LIVE').upper()}] | Jev 5.0 bps Deadband")
-    print(f"-> Kalshi BTC 15m [{ENV_CFG.get('KALSHI_MODE', 'LIVE').upper()}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
+    print(f"-> Polymarket SOL 5m [{sol_mode}] | Jev 5.0 bps Deadband")
+    print(f"-> Kalshi BTC 15m [{kalshi_mode}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
     print("=" * 75)
 
-    server = socketserver.TCPServer(("127.0.0.1", PORT), QuantDashboardHandler)
+    server = ThreadedTCPServer(("127.0.0.1", PORT), QuantDashboardHandler)
     server.serve_forever()
 
 if __name__ == "__main__":

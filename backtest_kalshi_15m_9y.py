@@ -173,7 +173,8 @@ def run_15m_simulation(klines_5m):
         if year_str not in yearly_pnl: yearly_pnl[year_str] = 0.0
 
         strike = c0["open"]
-        spot_450s = (c1["open"] + c1["close"]) / 2.0
+        # POINT-IN-TIME (PIT) LIMPO: Sem usar c1['close'] futuro aos 600s
+        spot_450s = c1["open"]
         final_spot = c2["close"]
         winner = "UP" if final_spot >= strike else "DOWN"
 
@@ -210,13 +211,13 @@ def run_15m_simulation(klines_5m):
 
         participated += 1
 
-        # Simulação de Take-Profit aos ~650s-750s (se vela 2 ou 3 esticou a favor)
-        favored_high = c1["high"] if target_side == "UP" else (2 * strike - c1["low"])
-        max_delta_seen = favored_high - strike
-        if max_delta_seen >= (dynamic_deadband * 1.8):
+        # Simulação de Take-Profit estritamente pós-entrada (usando vela c2: 600s-900s)
+        favored_high_c2 = c2["high"] if target_side == "UP" else (2 * strike - c2["low"])
+        max_delta_seen = favored_high_c2 - strike
+        if max_delta_seen >= (dynamic_deadband * 2.0):
             sold_tp = True
             tp_wins += 1
-            cycle_payout = round(shares * TP_PRICE, 2)
+            cycle_payout = round(shares * (TP_PRICE - 0.01), 2) # Desconta fee de saída Kalshi
         else:
             # Liquidação normal no fechamento aos 900s
             if target_side == winner:

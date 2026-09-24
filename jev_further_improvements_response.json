@@ -1,0 +1,39 @@
+{
+  "timestamp": 1790246363.8895905,
+  "answers": {
+    "kill_switch_utility": {
+      "choice": "essential_safety_layer",
+      "confidence": 1.0,
+      "probabilities": {
+        "neutral": 0.0,
+        "unnecessary_overhead": 0.0,
+        "essential_safety_layer": 1.0
+      }
+    },
+    "threading_server_recommendation": {
+      "choice": "strongly_recommended",
+      "confidence": 0.85,
+      "probabilities": {
+        "neutral": 0.02,
+        "strongly_recommended": 0.89,
+        "unnecessary": 0.09
+      }
+    },
+    "kalshi_backtest_sanitization": {
+      "choice": "mandatory_for_intellectual_honesty",
+      "confidence": 1.0,
+      "probabilities": {
+        "low_priority_academic": 0.0,
+        "mandatory_for_intellectual_honesty": 1.0,
+        "unnecessary": 0.0
+      }
+    },
+    "remaining_risk_score": {
+      "score": 1.11,
+      "confidence": 0.53
+    },
+    "overall_strategic_recommendation": {
+      "noul": 0.29
+    }
+  }
+}
