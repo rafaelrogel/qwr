@@ -232,6 +232,67 @@ def run_redeem_check():
         return 0
 
     print("\n[*] Preparando transações de resgate via Safe execTransaction...")
+    if not pk:
+        print("[!] Chave privada POLYGON_PRIVATE_KEY não configurada no .env!")
+        return 1
+
+    try:
+        account = Account.from_key(pk)
+    except Exception as epk:
+        print(f"[!] Erro ao carregar conta signer: {epk}")
+        return 1
+
+    safe_contract = w3.eth.contract(address=Web3.to_checksum_address(safe_addr), abi=SAFE_ABI)
+    zero_addr = "0x0000000000000000000000000000000000000000"
+
+    # Assinatura pré-validada do Safe (v=1, r=owner, s=0) quando msg.sender == owner
+    owner_bytes = bytes.fromhex(account.address[2:].lower()).rjust(32, b"\x00")
+    s_bytes = b"\x00" * 32
+    v_byte = b"\x01"
+    pre_validated_sig = owner_bytes + s_bytes + v_byte
+
+    redeemed_count = 0
+    for idx, p in enumerate(report["winning_positions"], 1):
+        condition_id = p.get("conditionId")
+        title = p.get("title", f"Position #{idx}")
+        if not condition_id:
+            print(f"  [!] Posição '{title}' não possui conditionId. Pulando...")
+            continue
+
+        try:
+            call_data = build_redeem_call_data(condition_id)
+            tx_data = safe_contract.functions.execTransaction(
+                Web3.to_checksum_address(CTF_ADDRESS),
+                0,
+                call_data,
+                0, # Operation: Call
+                0, # safeTxGas
+                0, # baseGas
+                0, # gasPrice
+                Web3.to_checksum_address(zero_addr),
+                Web3.to_checksum_address(zero_addr),
+                pre_validated_sig
+            ).build_transaction({
+                "from": account.address,
+                "nonce": w3.eth.get_transaction_count(account.address),
+                "gas": 300000,
+                "gasPrice": int(w3.eth.gas_price * 1.25)
+            })
+
+            signed = account.sign_transaction(tx_data)
+            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            print(f"  [🚀 RESGATE ENVIADO]: {title}")
+            print(f"     TX Hash: {tx_hash.hex()}")
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            if receipt.get("status") == 1:
+                print(f"     ✅ Sucesso! Confirmado no bloco {receipt.get('blockNumber')}")
+                redeemed_count += 1
+            else:
+                print(f"     ❌ Falha na execução da transação: status={receipt.get('status')}")
+        except Exception as e:
+            print(f"  [!] Erro ao resgatar {title}: {e}")
+
+    print(f"\n[🏁 RESGATE CONCLUÍDO]: {redeemed_count} posições resgatadas com sucesso.")
     return 0
 
 if __name__ == "__main__":

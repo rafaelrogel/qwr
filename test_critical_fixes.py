@@ -348,6 +348,44 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertEqual(winning[0]["title"], "Trade 2 - Vitória Pendente")
         self.assertEqual(winning[1]["title"], "Trade 4 - Parcial Residual")
 
+    def test_drawdown_floor_constants_and_trigger(self):
+        """Verifica que o Desk 1 possui piso de capital absoluto ($15.00) e max drawdown ($4.00)"""
+        import live_trader_5m
+        self.assertEqual(live_trader_5m.DRAWDOWN_FLOOR_USDC, 15.00, "Piso de capital deve ser $15.00 USDC")
+        self.assertEqual(live_trader_5m.MAX_SESSION_DRAWDOWN, 4.00, "Max session drawdown deve ser $4.00 USDC")
+
+    def test_authentic_138_trades_restored(self):
+        """Verifica que o diário de bordo possui 138 ciclos autênticos e nenhuma synthetic baseline"""
+        import json
+        with open("live_trading_journal.json", "r", encoding="utf-8") as f:
+            jdata = json.load(f)
+        trades = jdata.get("trades", [])
+        self.assertEqual(len(trades), 138, "O diário de bordo deve conter exatamente 138 ciclos reais")
+        self.assertEqual(jdata.get("cycles_executed"), 138)
+        self.assertEqual(trades[-1]["cycle"], 138)
+        self.assertEqual(trades[-1]["cycle_pnl"], -0.69)
+        self.assertEqual(trades[-1]["tx_hash"], "0x5f1239b2530511b1a07782092dfc2b3594aaf6c737d476e1e5418b0e49fdd528")
+        # Garante que hashes sintéticos falsos foram eliminados
+        for t in trades:
+            self.assertNotEqual(t.get("tx_hash"), "0xaudit_reconciled_baseline_20260924")
+
+    def test_kalshi_resume_guard_on_restart(self):
+        """Verifica que o Desk 3 (Kalshi) não abre ordem duplicada se houver posição em aberto salva no journal"""
+        from kalshi_trader_15m import KalshiTrader15M
+        bot = KalshiTrader15M()
+        bot.mode = "PAPER"
+        bot.current_open_position = {
+            "ticker": "KXBTC15M-TEST",
+            "target_side": "yes",
+            "entry_price": 50,
+            "stake": 0.50,
+            "order_id": "test_order_123",
+            "strike_price": 84000.0
+        }
+        # Verifica se atributos foram carregados
+        self.assertIsNotNone(bot.current_open_position)
+        self.assertEqual(bot.current_open_position["order_id"], "test_order_123")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

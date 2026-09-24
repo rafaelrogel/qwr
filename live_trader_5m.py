@@ -74,6 +74,8 @@ SCOUR_MIN_PRICE = 0.50       # Preco minimo de cota para o Sweeper
 SCOUR_MAX_PRICE = 0.75       # Preco maximo de cota para o Sweeper
 MAX_LOSS_LIMIT = -5.00    # Stop loss diario (-$5.00 USDC)
 TAKE_PROFIT_LIMIT = 50.00 # Take profit aumentado para +$50.00 USDC
+DRAWDOWN_FLOOR_USDC = 15.00 # Piso absoluto de preservacao de capital ($15.00 USDC)
+MAX_SESSION_DRAWDOWN = 4.00 # Perda maxima permitida na sessao ($4.00 USDC)
 
 def load_env_config() -> Dict[str, str]:
     """Carrega variaveis do arquivo .env"""
@@ -362,6 +364,7 @@ class LiveTrader:
         self.session_initial_balance = 0.0
         self.current_balance = 0.0
         self.session_pnl = 0.0
+        self.session_pnl_trades = 0.0
         self.session_cycles = 0
         self.session_wins = 0
         self.session_losses = 0
@@ -851,26 +854,33 @@ class LiveTrader:
             time.sleep(15)
             return
 
-        # 1. Verifica limites do Circuit Breaker na Sessao Ativa
-        if self.session_pnl <= MAX_LOSS_LIMIT:
-            self.is_halted = True
-            self.halt_reason = f"STOP LOSS DE SESSAO ATINGIDO (P&L: ${self.session_pnl:.2f} <= ${MAX_LOSS_LIMIT:.2f}). Protecao de capital ativada."
-            print(f"\n[CIRCUIT BREAKER]: {self.halt_reason}")
-            return
-
-        if self.session_pnl >= TAKE_PROFIT_LIMIT:
-            self.is_halted = True
-            self.halt_reason = f"TAKE PROFIT DE SESSAO ATINGIDO (P&L: ${self.session_pnl:.2f} >= ${TAKE_PROFIT_LIMIT:.2f}). Lucro garantido com sucesso!"
-            print(f"\n[CIRCUIT BREAKER]: {self.halt_reason}")
-            return
-
-        # 2. Verifica Saldo Disponivel
+        # 1. Verifica Saldo Disponivel e Conectividade
         bal = self.get_usdc_balance()
         if bal < 0:
             print("    [!] Falha de comunicacao ao consultar saldo USDC na Polygon. Pulando rodada por seguranca.")
             time.sleep(15)
             return
         print(f"    Saldo Real em Carteira: ${bal:.2f} USDC")
+
+        # 2. Verifica limites do Circuit Breaker na Sessao Ativa
+        if bal < DRAWDOWN_FLOOR_USDC:
+            self.is_halted = True
+            self.halt_reason = f"PISO DE CAPITAL ATINGIDO (${bal:.2f} < ${DRAWDOWN_FLOOR_USDC:.2f} USDC). Parada de emergência para proteção do patrimônio."
+            print(f"\n[CIRCUIT BREAKER - DRAWDOWN FLOOR]: {self.halt_reason}")
+            return
+
+        if self.session_pnl <= -MAX_SESSION_DRAWDOWN or self.session_pnl <= MAX_LOSS_LIMIT:
+            self.is_halted = True
+            self.halt_reason = f"STOP LOSS DE SESSAO ATINGIDO (P&L: ${self.session_pnl:.2f} <= -${MAX_SESSION_DRAWDOWN:.2f}). Protecao de capital ativada."
+            print(f"\n[CIRCUIT BREAKER - SESSION DRAWDOWN]: {self.halt_reason}")
+            return
+
+        if self.session_pnl >= TAKE_PROFIT_LIMIT:
+            self.is_halted = True
+            self.halt_reason = f"TAKE PROFIT DE SESSAO ATINGIDO (P&L: ${self.session_pnl:.2f} >= ${TAKE_PROFIT_LIMIT:.2f}). Lucro garantido com sucesso!"
+            print(f"\n[CIRCUIT BREAKER - TAKE PROFIT]: {self.halt_reason}")
+            return
+
         if bal < FIXED_STAKE:
             print(f"    [!] Saldo insuficiente para aposta de ${FIXED_STAKE:.2f} USDC.")
             print(f"    -> Aguardando saldo... (Pressione Ctrl+C para sair)")
@@ -1565,29 +1575,42 @@ class LiveTrader:
         wallet_session_delta = round(new_balance - self.session_initial_balance, 2)
         self.session_pnl = wallet_session_delta
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
+        self.session_pnl_trades = round(self.session_pnl_trades + cycle_pnl, 2)
 
-        # Verificacao de paridade contabil REAL (Soma dos Trades vs Delta Real na Carteira Safe + Cotas Pendentes)
+        # Verificacao de paridade contabil REAL (Trades da Sessão vs Delta Real na Carteira Safe + Cotas Pendentes)
         if self.execution_mode != "paper":
             sol_impact = get_shared_wallet_sol_impact()
             # Desconta o impacto de operações do Desk 2 (SOL) que utilizam a mesma carteira Safe compartilhada
             btc_wallet_session_delta = round(wallet_session_delta - sol_impact, 2)
             # Saldo efetivo reconciliado: variacao de USDC em carteira atribuível ao BTC + valor das cotas vencedoras aguardando redeem
             effective_wallet_delta = round(btc_wallet_session_delta + self.pending_unredeemed_payouts, 2)
-            expected_balance_by_trades = round(self.session_initial_balance + self.cumulative_cycle_pnl, 2)
-            parity_gap = abs(effective_wallet_delta - self.cumulative_cycle_pnl)
+            expected_balance_by_trades = round(self.session_initial_balance + self.session_pnl_trades, 2)
+            parity_gap = abs(effective_wallet_delta - self.session_pnl_trades)
             if parity_gap > 1.50:
-                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada!")
-                print(f"       Resultado Teórico dos Trades BTC: {self.cumulative_cycle_pnl:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
-                print(f"       Variação USDC Total na Carteira:  {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
+                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada na sessão!")
+                print(f"       Resultado Teórico dos Trades da Sessão: {self.session_pnl_trades:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
+                print(f"       Variação USDC Total na Carteira:        {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
                 if abs(sol_impact) > 0.001:
-                    print(f"       Impacto Isolado Desk 2 (SOL):     {sol_impact:+.2f} USDC")
-                print(f"       Cotas Pendentes de Resgate:       +${self.pending_unredeemed_payouts:.2f} USDC")
-                print(f"       Delta Efetivo Reconciliado BTC:   {effective_wallet_delta:+.2f} USDC")
+                    print(f"       Impacto Isolado Desk 2 (SOL):           {sol_impact:+.2f} USDC")
+                print(f"       Cotas Pendentes de Resgate:             +${self.pending_unredeemed_payouts:.2f} USDC")
+                print(f"       Delta Efetivo Reconciliado BTC:         {effective_wallet_delta:+.2f} USDC")
                 if parity_gap > 3.50:
                     print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
                     self.is_halted = True
                     self.halt_reason = f"Divergência contábil de carteira (${parity_gap:.2f})"
                     return
+
+            # Travas de Drawdown Pós-Ciclo
+            if new_balance < DRAWDOWN_FLOOR_USDC:
+                print(f"       [🚨 CIRCUIT BREAKER]: Saldo real (${new_balance:.2f}) atingiu o piso mínimo (${DRAWDOWN_FLOOR_USDC:.2f} USDC). Encerrando operações.")
+                self.is_halted = True
+                self.halt_reason = f"Piso absoluto de capital atingido (${new_balance:.2f} < ${DRAWDOWN_FLOOR_USDC:.2f})"
+                return
+            if btc_wallet_session_delta <= -MAX_SESSION_DRAWDOWN:
+                print(f"       [🚨 CIRCUIT BREAKER]: Drawdown da sessão (${btc_wallet_session_delta:.2f}) atingiu limite máximo (-${MAX_SESSION_DRAWDOWN:.2f} USDC). Encerrando operações.")
+                self.is_halted = True
+                self.halt_reason = f"Max session drawdown atingido (${btc_wallet_session_delta:.2f} <= -${MAX_SESSION_DRAWDOWN:.2f})"
+                return
 
         self.traded_windows.add(window_ts)
 

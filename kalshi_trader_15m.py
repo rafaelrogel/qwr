@@ -347,161 +347,180 @@ class KalshiTrader15M:
         print(f" Saldo Real Shard 2: ${self.balance:,.2f} USD")
         print("=" * 80)
 
-        # 1. Ponto de Avaliação Ótimo: Aos 450s (exata metade dos 900s da vela de 15m)
-        eval_point = EVAL_POINT_SEC
-        if elapsed_sec < eval_point:
-            wait = eval_point - elapsed_sec
-            print(f"[*] Aguardando {wait}s até o ponto quantitativo de decisão ({eval_point}s - 50% da vela de 15m)...")
-            time.sleep(min(wait, 30))
-            return
-
-        # 2. Captura Strike e Spot Atual
-        spot_now = get_binance_btc_spot()
-        if not spot_now:
-            print("[!] Falha ao ler preço spot de referência. Aguardando...")
-            time.sleep(10)
-            return
-
-        # Busca mercados Kalshi para a série KXBTC15M
-        markets = self.client.get_btc_15m_markets()
-        if not markets:
-            print("[i] Nenhum mercado KXBTC15M aberto no momento no endpoint da Kalshi. Pulando ciclo.")
-            time.sleep(30)
-            return
-
-        target_market = markets[0]
-        ticker = target_market.get("ticker", "KXBTC15M-ACTIVE")
-        strike_price = float(target_market.get("floor_strike") or target_market.get("strike_price") or spot_now)
-
-        delta = spot_now - strike_price
-        dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS, 2))
-
-        print(f"\n[📊 ANÁLISE DE MERCADO KALSHI]:")
-        print(f"   Ticker: {ticker}")
-        print(f"   Strike (K): ${strike_price:,.2f} | Spot Atual: ${spot_now:,.2f}")
-        print(f"   Drift Real (Delta): ${delta:+.2f} | Deadband Dinâmico: ${dynamic_deadband:.2f} ({DEADBAND_BPS*10000:.1f} bps)")
-
-        # 3. Decisão de Entrada
-        candidate_side = None
-        target_dir = None
-
-        if delta >= dynamic_deadband:
-            candidate_side = "yes"
-            target_dir = "UP"
-            print(f"   -> [SINAL INTRA-VELA]: UP / YES (Drift de +${delta:.2f} superou deadband de ${dynamic_deadband:.2f})")
-        elif delta <= -dynamic_deadband:
-            candidate_side = "no"
-            target_dir = "DOWN"
-            print(f"   -> [SINAL INTRA-VELA]: DOWN / NO (Drift de -${abs(delta):.2f} superou deadband de ${dynamic_deadband:.2f})")
+        has_resumed = False
+        if self.current_open_position:
+            pos = self.current_open_position
+            ticker = pos.get("ticker", "KXBTC15M-ACTIVE")
+            target_side = pos.get("target_side", "yes")
+            entry_price = int(pos.get("entry_price", 50))
+            stake = float(pos.get("stake", 0.50))
+            real_order_id = pos.get("order_id", "")
+            strike_price = float(pos.get("strike_price", 0.0))
+            spot_now = strike_price
+            has_resumed = True
+            should_enter = True
+            print(f"\n[🔄 RESUME GUARD]: Posição em aberto detectada na inicialização do ciclo.")
+            print(f"   Ticker: {ticker} | Lado: {target_side.upper()} | Entrada: {entry_price}¢ | Strike: ${strike_price:,.2f}")
+            print("   -> Retomando monitoramento de saída e apuração sem abrir nova ordem!")
         else:
-            print(f"   -> [FILTRO DEADBAND]: Delta de ${delta:+.2f} está na zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps). Preservando capital.")
-            time.sleep(max(1, remaining_sec))
-            return
+            # 1. Ponto de Avaliação Ótimo: Aos 450s (exata metade dos 900s da vela de 15m)
+            eval_point = EVAL_POINT_SEC
+            if elapsed_sec < eval_point:
+                wait = eval_point - elapsed_sec
+                print(f"[*] Aguardando {wait}s até o ponto quantitativo de decisão ({eval_point}s - 50% da vela de 15m)...")
+                time.sleep(min(wait, 30))
+                return
 
-        # 3.1 Filtro de Vela Anterior (Recomendação #1 do Jev — 75% Trend Continuation)
-        if REQUIRE_PRIOR_CANDLE_TREND:
-            prior_candle = get_binance_btc_15m_prior_candle()
-            if prior_candle:
-                prior_dir = prior_candle["dir"]
-                ret_bps = prior_candle["ret_bps"]
-                print(f"   [🕯️ FILTRO DE VELA ANTERIOR - JEV]: Vela 15m Anterior fechou {prior_dir} ({ret_bps:.1f} bps)")
-                if target_dir != prior_dir:
-                    print(f"   -> [🛡️ VETO JEV]: Sinal {target_dir} ({candidate_side.upper()}) rejeitado por divergir da vela 15m anterior ({prior_dir}).")
-                    print("      Preservando capital contra exaustões e falsos rompimentos de contratendência.")
-                    time.sleep(max(1, remaining_sec))
-                    return
-                else:
-                    print(f"   -> [🔥 CONFIRMAÇÃO JEV]: Tendência da vela anterior ({prior_dir}) alinhada com drift intra-vela ({target_dir})! Convicção alta.")
+            # 2. Captura Strike e Spot Atual
+            spot_now = get_binance_btc_spot()
+            if not spot_now:
+                print("[!] Falha ao ler preço spot de referência. Aguardando...")
+                time.sleep(10)
+                return
+
+            # Busca mercados Kalshi para a série KXBTC15M
+            markets = self.client.get_btc_15m_markets()
+            if not markets:
+                print("[i] Nenhum mercado KXBTC15M aberto no momento no endpoint da Kalshi. Pulando ciclo.")
+                time.sleep(30)
+                return
+
+            target_market = markets[0]
+            ticker = target_market.get("ticker", "KXBTC15M-ACTIVE")
+            strike_price = float(target_market.get("floor_strike") or target_market.get("strike_price") or spot_now)
+
+            delta = spot_now - strike_price
+            dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS, 2))
+
+            print(f"\n[📊 ANÁLISE DE MERCADO KALSHI]:")
+            print(f"   Ticker: {ticker}")
+            print(f"   Strike (K): ${strike_price:,.2f} | Spot Atual: ${spot_now:,.2f}")
+            print(f"   Drift Real (Delta): ${delta:+.2f} | Deadband Dinâmico: ${dynamic_deadband:.2f} ({DEADBAND_BPS*10000:.1f} bps)")
+
+            # 3. Decisão de Entrada
+            candidate_side = None
+            target_dir = None
+
+            if delta >= dynamic_deadband:
+                candidate_side = "yes"
+                target_dir = "UP"
+                print(f"   -> [SINAL INTRA-VELA]: UP / YES (Drift de +${delta:.2f} superou deadband de ${dynamic_deadband:.2f})")
+            elif delta <= -dynamic_deadband:
+                candidate_side = "no"
+                target_dir = "DOWN"
+                print(f"   -> [SINAL INTRA-VELA]: DOWN / NO (Drift de -${abs(delta):.2f} superou deadband de ${dynamic_deadband:.2f})")
             else:
-                print("   [Aviso]: Não foi possível ler vela anterior da Binance. Prosseguindo com drift intra-vela.")
-
-        should_enter = True
-        target_side = candidate_side
-
-        # 4. Execução (Paper ou Live)
-        if should_enter:
-            yes_ask = int(float(target_market.get("yes_ask_dollars") or target_market.get("yes_ask") or 0.55) * 100)
-            yes_bid = int(float(target_market.get("yes_bid_dollars") or target_market.get("yes_bid") or 0.50) * 100)
-            no_ask = int(float(target_market.get("no_ask_dollars") or target_market.get("no_ask") or 0.55) * 100)
-            no_bid = int(float(target_market.get("no_bid_dollars") or target_market.get("no_bid") or 0.50) * 100)
-            
-            entry_price = yes_ask if target_side == "yes" else no_ask
-            
-            if entry_price > PRIMARY_MAX_PRICE:
-                print(f"   [🛡️ FILTRO TETO DE PREÇO]: Cota a {entry_price}¢ > {PRIMARY_MAX_PRICE}¢ (Breakeven desfavorável). Pulando entrada.")
+                print(f"   -> [FILTRO DEADBAND]: Delta de ${delta:+.2f} está na zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps). Preservando capital.")
                 time.sleep(max(1, remaining_sec))
                 return
 
-            stake = entry_price / 100.0
-            print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f}")
-            real_order_id = ""
-            if self.mode == "LIVE":
-                # Validação de Saldo e Piso de Segurança Kalshi
-                b_info = self.client.get_real_balance()
-                real_s2 = b_info.get("shard2_balance", 0.0)
-                if real_s2 and real_s2 > 0:
-                    self.balance = real_s2
-                if self.balance < 2.00:
-                    print(f"   [🚨 TRAVA DE SEGURANÇA]: Saldo Kalshi Shard 2 (${self.balance:.2f}) abaixo do piso mínimo ($2.00). Abortando para preservar capital.")
+            # 3.1 Filtro de Vela Anterior (Recomendação #1 do Jev — 75% Trend Continuation)
+            if REQUIRE_PRIOR_CANDLE_TREND:
+                prior_candle = get_binance_btc_15m_prior_candle()
+                if prior_candle:
+                    prior_dir = prior_candle["dir"]
+                    ret_bps = prior_candle["ret_bps"]
+                    print(f"   [🕯️ FILTRO DE VELA ANTERIOR - JEV]: Vela 15m Anterior fechou {prior_dir} ({ret_bps:.1f} bps)")
+                    if target_dir != prior_dir:
+                        print(f"   -> [🛡️ VETO JEV]: Sinal {target_dir} ({candidate_side.upper()}) rejeitado por divergir da vela 15m anterior ({prior_dir}).")
+                        print("      Preservando capital contra exaustões e falsos rompimentos de contratendência.")
+                        time.sleep(max(1, remaining_sec))
+                        return
+                    else:
+                        print(f"   -> [🔥 CONFIRMAÇÃO JEV]: Tendência da vela anterior ({prior_dir}) alinhada com drift intra-vela ({target_dir})! Convicção alta.")
+                else:
+                    print("   [Aviso]: Não foi possível ler vela anterior da Binance. Prosseguindo com drift intra-vela.")
+
+            should_enter = True
+            target_side = candidate_side
+
+        # 4. Execução (Paper ou Live)
+        if should_enter:
+            if not has_resumed:
+                yes_ask = int(float(target_market.get("yes_ask_dollars") or target_market.get("yes_ask") or 0.55) * 100)
+                yes_bid = int(float(target_market.get("yes_bid_dollars") or target_market.get("yes_bid") or 0.50) * 100)
+                no_ask = int(float(target_market.get("no_ask_dollars") or target_market.get("no_ask") or 0.55) * 100)
+                no_bid = int(float(target_market.get("no_bid_dollars") or target_market.get("no_bid") or 0.50) * 100)
+            
+                entry_price = yes_ask if target_side == "yes" else no_ask
+            
+                if entry_price > PRIMARY_MAX_PRICE:
+                    print(f"   [🛡️ FILTRO TETO DE PREÇO]: Cota a {entry_price}¢ > {PRIMARY_MAX_PRICE}¢ (Breakeven desfavorável). Pulando entrada.")
                     time.sleep(max(1, remaining_sec))
                     return
 
-                res = self.client.place_order(ticker, target_side, 1, entry_price)
-                print(f"   [⚡ RESPOSTA DA ORDEM REAL KALSHI]: {res}")
-                if not res or ("order_id" not in res and "order" not in res):
-                    print("   [!] Falha na execução da ordem na Kalshi. Abortando entrada para proteger capital.")
-                    time.sleep(max(1, remaining_sec))
-                    return
-                order_info = res.get("order", {}) if isinstance(res.get("order"), dict) else res
-                real_order_id = order_info.get("order_id") or res.get("order_id", "")
-                status = str(order_info.get("status", "resting")).lower()
-                print(f"   [⚡ STATUS INICIAL DA COMPRA]: ID: {real_order_id} | Status: {status}")
+                stake = entry_price / 100.0
+                print(f"\n[🚀 ORDEM KALSHI]: Comprando {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f}")
+                real_order_id = ""
+                if self.mode == "LIVE":
+                    # Validação de Saldo e Piso de Segurança Kalshi
+                    b_info = self.client.get_real_balance()
+                    real_s2 = b_info.get("shard2_balance", 0.0)
+                    if real_s2 and real_s2 > 0:
+                        self.balance = real_s2
+                    if self.balance < 2.00:
+                        print(f"   [🚨 TRAVA DE SEGURANÇA]: Saldo Kalshi Shard 2 (${self.balance:.2f}) abaixo do piso mínimo ($2.00). Abortando para preservar capital.")
+                        time.sleep(max(1, remaining_sec))
+                        return
 
-                # Verificação rigorosa de execução (Fill-or-Cancel) no BUY
-                if status in ("resting", "pending"):
-                    print("   -> Aguardando confirmação de execução (fill) da compra no livro...")
-                    for _ in range(4):
-                        time.sleep(4)
-                        chk = self.client.get_order_status(real_order_id)
-                        if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
-                            cur_st = str(chk["order"].get("status", "")).lower()
-                            if cur_st in ("executed", "filled"):
-                                status = "filled"
-                                print("   -> Compra Kalshi PREENCHIDA (Filled) com sucesso!")
-                                break
+                    res = self.client.place_order(ticker, target_side, 1, entry_price)
+                    print(f"   [⚡ RESPOSTA DA ORDEM REAL KALSHI]: {res}")
+                    if not res or ("order_id" not in res and "order" not in res):
+                        print("   [!] Falha na execução da ordem na Kalshi. Abortando entrada para proteger capital.")
+                        time.sleep(max(1, remaining_sec))
+                        return
+                    order_info = res.get("order", {}) if isinstance(res.get("order"), dict) else res
+                    real_order_id = order_info.get("order_id") or res.get("order_id", "")
+                    status = str(order_info.get("status", "resting")).lower()
+                    print(f"   [⚡ STATUS INICIAL DA COMPRA]: ID: {real_order_id} | Status: {status}")
 
-                if status not in ("executed", "filled"):
-                    print(f"   [⚠️ COMPRA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
-                    try:
-                        self.client.cancel_order(real_order_id)
-                    except Exception:
-                        pass
-                    time.sleep(max(1, remaining_sec))
-                    return
+                    # Verificação rigorosa de execução (Fill-or-Cancel) no BUY
+                    if status in ("open", "resting", "pending"):
+                        print("   -> Aguardando confirmação de execução (fill) da compra no livro...")
+                        for _ in range(4):
+                            time.sleep(4)
+                            chk = self.client.get_order_status(real_order_id)
+                            if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
+                                cur_st = str(chk["order"].get("status", "")).lower()
+                                if cur_st in ("executed", "filled"):
+                                    status = "filled"
+                                    print("   -> Compra Kalshi PREENCHIDA (Filled) com sucesso!")
+                                    break
+                                elif cur_st:
+                                    status = cur_st
 
-                print(f"   [✅ COMPRA CONFIRMADA ON-EXCHANGE]: 1 contrato de {target_side.upper()} @ {entry_price}¢ | Order ID: {real_order_id}")
-                self.save_open_position({
-                    "ticker": ticker,
-                    "target_side": target_side,
-                    "count": 1,
-                    "entry_price": entry_price,
-                    "stake": stake,
-                    "order_id": real_order_id,
-                    "strike_price": strike_price,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-            else:
-                print(f"   [SIMULAÇÃO PAPER]: 1 contrato de {target_side.upper()} executado a {entry_price}¢ com sucesso!")
-                self.save_open_position({
-                    "ticker": ticker,
-                    "target_side": target_side,
-                    "count": 1,
-                    "entry_price": entry_price,
-                    "stake": stake,
-                    "order_id": "paper-sim",
-                    "strike_price": strike_price,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                    if status not in ("executed", "filled"):
+                        print(f"   [⚠️ COMPRA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
+                        try:
+                            self.client.cancel_order(real_order_id)
+                        except Exception:
+                            pass
+                        time.sleep(max(1, remaining_sec))
+                        return
+
+                    print(f"   [✅ COMPRA CONFIRMADA ON-EXCHANGE]: 1 contrato de {target_side.upper()} @ {entry_price}¢ | Order ID: {real_order_id}")
+                    self.save_open_position({
+                        "ticker": ticker,
+                        "target_side": target_side,
+                        "count": 1,
+                        "entry_price": entry_price,
+                        "stake": stake,
+                        "order_id": real_order_id,
+                        "strike_price": strike_price,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                else:
+                    print(f"   [SIMULAÇÃO PAPER]: 1 contrato de {target_side.upper()} executado a {entry_price}¢ com sucesso!")
+                    self.save_open_position({
+                        "ticker": ticker,
+                        "target_side": target_side,
+                        "count": 1,
+                        "entry_price": entry_price,
+                        "stake": stake,
+                        "order_id": "paper-sim",
+                        "strike_price": strike_price,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
 
             # 5. Monitoramento de Take-Profit até o fim dos 900s
             print(f"[🎯 MONITORAMENTO KALSHI]: Acompanhando Take-Profit (>= {TAKE_PROFIT_CENTS}¢) até os 900s...")
@@ -535,7 +554,7 @@ class KalshiTrader15M:
                                 print(f"   -> Ordem de Venda Enviada! Order ID: {sell_order_id} | Status: {status}")
 
                                 # Se a ordem ainda estiver descansando (resting), aguarda preenchimento no livro
-                                if status in ("resting", "pending"):
+                                if status in ("open", "resting", "pending"):
                                     print("   -> Aguardando execução (fill) da ordem no livro Kalshi...")
                                     for _ in range(4):
                                         time.sleep(5)
@@ -546,6 +565,8 @@ class KalshiTrader15M:
                                                  status = "filled"
                                                  print("   -> Ordem Kalshi PREENCHIDA (Filled) com sucesso!")
                                                  break
+                                             elif cur_st:
+                                                 status = cur_st
 
                                 if status in ("executed", "filled"):
                                     sell_ok = True
