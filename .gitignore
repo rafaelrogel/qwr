@@ -57,6 +57,8 @@ sources.json
 prr_token.json
 *_live_market_state.json
 kalshi_live_weather_signal.json
+kalshi_natgas_15m_live_state.json
+kalshi_natgas_15m_journal.json
 
 # Dataset Subdirectories
 kachoio_crypto_5m/

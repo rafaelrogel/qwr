@@ -38,6 +38,8 @@ JOURNAL_BTC_CSV = os.path.join(BASE_DIR, "live_trading_journal.csv")
 JOURNAL_SOL_JSON = os.path.join(BASE_DIR, "sol_trading_journal.json")
 JOURNAL_KALSHI_JSON = os.path.join(BASE_DIR, "kalshi_trading_journal.json")
 JOURNAL_NATGAS_JSON = os.path.join(BASE_DIR, "kalshi_natgas_journal.json")
+JOURNAL_NATGAS_15M_JSON = os.path.join(BASE_DIR, "kalshi_natgas_15m_journal.json")
+NATGAS_15M_LIVE_STATE_JSON = os.path.join(BASE_DIR, "kalshi_natgas_15m_live_state.json")
 SIGNAL_WEATHER_JSON = os.path.join(BASE_DIR, "kalshi_live_weather_signal.json")
 SOL_LIVE_STATE_JSON = os.path.join(BASE_DIR, "sol_live_market_state.json")
 HALT_FILE = os.path.join(BASE_DIR, "HALT")
@@ -237,6 +239,26 @@ GLOBAL_STATE = {
         "rationale": "Aguardando janela de quarta-feira (14:00 - 18:00 ET)",
         "next_window": "Quarta-feira 14:00 - 18:00 ET",
         "has_open_position": False
+    },
+    "natgas_15m_radar": {
+        "asset": "NATGAS",
+        "series": "KXNATGAS15M",
+        "mode": ENV_CFG.get("NATGAS_15M_MODE", "LIVE").upper(),
+        "spot": 3.348,
+        "strike": 3.345,
+        "delta": 0.003,
+        "deadband": 0.0033,
+        "seconds_left": 450,
+        "seconds_elapsed": 450,
+        "progress_pct": 50.0,
+        "prior_candle_dir": "UP",
+        "prior_candle_bps": 39.0,
+        "ticker": "KXNATGAS15M-ACTIVE",
+        "status_signal": "AGUARDANDO PONTO QUANTITATIVO (450s)",
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": 0.0
     }
 }
 
@@ -484,6 +506,15 @@ def background_feeds_worker():
             except Exception:
                 pass
 
+        # Desk 5: NatGas 15m Live State
+        if os.path.exists(NATGAS_15M_LIVE_STATE_JSON):
+            try:
+                with open(NATGAS_15M_LIVE_STATE_JSON, "r", encoding="utf-8") as f:
+                    ng15_state = json.load(f)
+                    GLOBAL_STATE["natgas_15m_radar"].update(ng15_state)
+            except Exception:
+                pass
+
         time.sleep(2.0)
 
 # ===================== PROCESSAMENTO DO HISTÓRICO BTC REAL =====================
@@ -639,6 +670,16 @@ def get_natgas_trades() -> List[dict]:
             with open(JOURNAL_NATGAS_JSON, "r", encoding="utf-8") as f:
                 j = json.load(f)
                 return j.get("trade_history", [])[::-1]
+        except Exception:
+            pass
+    return []
+
+def get_natgas_15m_trades() -> List[dict]:
+    if os.path.exists(JOURNAL_NATGAS_15M_JSON):
+        try:
+            with open(JOURNAL_NATGAS_15M_JSON, "r", encoding="utf-8") as f:
+                j = json.load(f)
+                return j.get("trades", [])[::-1]
         except Exception:
             pass
     return []
@@ -1350,7 +1391,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
             <div class="status-chip">
                 <span class="dot-pulse" style="background: var(--neon-amber); color: var(--neon-amber);"></span>
-                <span>DESK 4: NATGAS STANDBY</span>
+                <span>DESK 4: NATGAS EIA STANDBY</span>
+            </div>
+            <div class="status-chip">
+                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
+                <span>DESK 5: NATGAS 15M LIVE</span>
             </div>
             <div class="status-chip mono" id="clockUTC" style="color: var(--neon-amber); font-weight: 600;">
                 UTC: --:--:--
@@ -1390,7 +1435,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="desk-switch-tab" id="tabKalshi" onclick="switchMainTab('kalshi')">
                 <div class="switch-icon" style="color: var(--neon-cyan); background: rgba(0, 240, 255, 0.1);">🏛️</div>
                 <div class="switch-content">
-                    <div class="switch-title">PÁGINA 2: DESKS 3 & 4 — KALSHI CFTC (BTC 15M & NATGAS)</div>
+                    <div class="switch-title">PÁGINA 2: DESKS 3, 4 & 5 — KALSHI CFTC (BTC 15M, EIA & NATGAS 15M)</div>
                     <div class="switch-desc">Total Consolidado CFTC: <span id="navKalshiTotal" class="mono font-bold" style="color: var(--neon-cyan); font-size: 13px;">$10.36 USD</span> <span style="color: var(--text-faint); font-size: 11px;">(Shard 0: <span id="navKalshiS0" style="color: var(--neon-amber); font-weight: 700;">$1.31</span> | Shard 2: <span id="navKalshiS2" style="color: var(--neon-green); font-weight: 700;">$9.05</span>)</span></div>
                 </div>
                 <span class="switch-badge" style="background: rgba(0, 240, 255, 0.15); color: var(--neon-cyan); border: 1px solid var(--neon-cyan);">SALDO CONSOLIDADO</span>
@@ -1705,6 +1750,57 @@ HTML_CONTENT = """<!DOCTYPE html>
                         Carregando análise física e climatológica do Henry Hub...
                     </div>
                 </div>
+
+                <!-- DESK 5: KALSHI NATGAS 15M INTRADAY CARD -->
+                <div class="desk-card" style="border-top: 2px solid var(--neon-green);">
+                    <div class="desk-header">
+                        <div class="desk-badge-group">
+                            <div class="asset-icon" style="color: var(--neon-green);">⚡</div>
+                            <div>
+                                <div class="desk-title">Desk 5: Kalshi NatGas 15m Desk</div>
+                                <div style="font-size: 11px; color: var(--text-faint);">Série Oficial KXNATGAS15M (Exchange Shard 2)</div>
+                            </div>
+                        </div>
+                        <span class="desk-mode-tag mode-live" id="natgas15mBadge">● REAL MONEY (CFTC KALSHI)</span>
+                    </div>
+
+                    <div class="timer-box">
+                        <div class="timer-info mono">
+                            <span id="ng15Ticker">KXNATGAS15M</span>
+                            <span id="ng15Timer" style="color: var(--neon-green); font-weight: 700;">Restam: --s</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-bar" id="ng15Progress" style="width: 50%; background: linear-gradient(90deg, #059669, var(--neon-green));"></div>
+                        </div>
+                    </div>
+
+                    <div class="desk-stats-grid">
+                        <div class="stat-pod">
+                            <div class="pod-label">Floor Strike K ($/MMBtu)</div>
+                            <div class="pod-val mono" id="ng15Strike">$0.0000</div>
+                            <div class="pod-sub">Pyth / Henry Hub Ref</div>
+                        </div>
+                        <div class="stat-pod">
+                            <div class="pod-label">Spot Henry Hub Atual</div>
+                            <div class="pod-val mono" id="ng15Spot" style="color: var(--neon-green);">$0.0000</div>
+                            <div class="pod-sub" id="ng15PriorCandle">Vela 15m Ant: --</div>
+                        </div>
+                        <div class="stat-pod">
+                            <div class="pod-label">Delta NatGas</div>
+                            <div class="pod-val mono" id="ng15Delta">$0.0000</div>
+                            <div class="pod-sub" id="ng15Deadband">Deadband: 10.0 bps ($0.0030)</div>
+                        </div>
+                        <div class="stat-pod">
+                            <div class="pod-label">Saldo Alocado Shard 2</div>
+                            <div class="pod-val mono" id="ng15RealBal" style="color: var(--neon-green);">$9.05 USD</div>
+                            <div class="pod-sub">Consolidado: <span id="ng15ConsolSubDesk">$10.36 USD</span></div>
+                        </div>
+                    </div>
+
+                    <div class="decision-banner" id="ng15Banner" style="border-left-color: var(--neon-green);">
+                        Aguardando dados da Kalshi e Henry Hub Spot...
+                    </div>
+                </div>
             </div>
 
             <!-- UNIFIED TABLES FOR KALSHI -->
@@ -1717,6 +1813,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div style="display: flex; gap: 6px;">
                         <button class="tab-btn active" id="btnKalshiBtc" style="padding: 4px 12px; font-size: 11px;" onclick="loadKalshiTable('kalshi')">🏛️ KXBTC15M Trades</button>
                         <button class="tab-btn" id="btnKalshiNatGas" style="padding: 4px 12px; font-size: 11px;" onclick="loadKalshiTable('natgas')">🔥 NatGas EIA Trades</button>
+                        <button class="tab-btn" id="btnKalshiNatGas15m" style="padding: 4px 12px; font-size: 11px;" onclick="loadKalshiTable('natgas_15m')">⚡ KXNATGAS15M Trades</button>
                     </div>
                 </div>
 
@@ -1892,10 +1989,16 @@ HTML_CONTENT = """<!DOCTYPE html>
             currentKalshiAsset = asset;
             const bBtc = document.getElementById('btnKalshiBtc');
             const bNg = document.getElementById('btnKalshiNatGas');
+            const bNg15 = document.getElementById('btnKalshiNatGas15m');
             const ind = document.getElementById('kalshiTableTabIndicator');
             if (bBtc) bBtc.classList.toggle('active', asset === 'kalshi');
             if (bNg) bNg.classList.toggle('active', asset === 'natgas');
-            if (ind) ind.innerText = asset === 'kalshi' ? '[ KXBTC15M ]' : '[ NATGAS EIA ]';
+            if (bNg15) bNg15.classList.toggle('active', asset === 'natgas_15m');
+            if (ind) {
+                if (asset === 'kalshi') ind.innerText = '[ KXBTC15M ]';
+                else if (asset === 'natgas') ind.innerText = '[ NATGAS EIA ]';
+                else if (asset === 'natgas_15m') ind.innerText = '[ KXNATGAS15M ]';
+            }
             renderKalshiTable();
         }
 
@@ -1971,6 +2074,38 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td><span class="badge-win">${t.result || 'PENDENTE'}</span></td>
                         <td class="mono" style="color:${t.pnl >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)'};">${t.pnl >= 0 ? '+' : ''}$${Number(t.pnl || 0).toFixed(2)}</td>
                         <td class="mono" style="font-weight:700;">$${Number(t.balance || 1.31).toFixed(2)}</td>
+                    </tr>
+                `).join('');
+            } else if (currentKalshiAsset === 'natgas_15m') {
+                thead.innerHTML = `
+                    <tr>
+                        <th>Janela (UTC)</th>
+                        <th>Ticker KXNATGAS15M</th>
+                        <th>Strike ($/MMBtu)</th>
+                        <th>Spot Final</th>
+                        <th>Alvo</th>
+                        <th>Resultado</th>
+                        <th>Payout</th>
+                        <th>P&L</th>
+                        <th>Saldo Shard 2</th>
+                    </tr>
+                `;
+                const ng15Trades = latestDashboardData.natgas_15m_trades || [];
+                if (ng15Trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-faint);">0 trades forçados no Desk 5. Filtros de tendência e teto de preço preservaram 100% da banca ($9.05 USD intactos).</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = ng15Trades.map(t => `
+                    <tr>
+                        <td class="mono">${t.timestamp ? t.timestamp.substring(11, 19) : '-'}</td>
+                        <td class="mono" style="color:var(--neon-green);">${t.ticker}</td>
+                        <td class="mono">$${Number(t.strike).toFixed(4)}</td>
+                        <td class="mono">$${Number(t.final_spot).toFixed(4)}</td>
+                        <td><span class="badge-up">${t.target_side}</span></td>
+                        <td><span class="badge-win">${t.result}</span></td>
+                        <td class="mono">$${Number(t.payout).toFixed(2)}</td>
+                        <td class="mono">+${Number(t.cycle_pnl).toFixed(2)}</td>
+                        <td class="mono">$${Number(t.balance).toFixed(2)}</td>
                     </tr>
                 `).join('');
             }
@@ -2134,6 +2269,28 @@ HTML_CONTENT = """<!DOCTYPE html>
                 if (document.getElementById('natgasStatusSignal')) document.getElementById('natgasStatusSignal').innerText = natgas.signal || 'NEUTRAL / NO TRADE';
                 if (document.getElementById('natgasBanner')) {
                     document.getElementById('natgasBanner').innerHTML = `<strong>Co-Piloto JEV & Clima:</strong>&nbsp;${natgas.rationale || 'Aguardando janela de quarta-feira (14:00 - 18:00 ET)'}`;
+                }
+
+                // Desk 5: Kalshi NatGas 15m Card
+                const ng15 = data.natgas_15m_radar || {};
+                if (document.getElementById('ng15Ticker')) document.getElementById('ng15Ticker').innerText = ng15.ticker || 'KXNATGAS15M';
+                if (document.getElementById('ng15Timer')) document.getElementById('ng15Timer').innerText = `Restam: ${ng15.seconds_left || 0}s`;
+                if (document.getElementById('ng15Progress')) document.getElementById('ng15Progress').style.width = `${ng15.progress_pct || 0}%`;
+                if (document.getElementById('ng15Strike')) document.getElementById('ng15Strike').innerText = `$${Number(ng15.strike || 0).toFixed(4)}`;
+                if (document.getElementById('ng15Spot')) document.getElementById('ng15Spot').innerText = `$${Number(ng15.spot || 0).toFixed(4)}`;
+                if (document.getElementById('ng15PriorCandle')) document.getElementById('ng15PriorCandle').innerText = `Vela 15m Ant: ${ng15.prior_candle_dir || 'UP'} (${Number(ng15.prior_candle_bps || 0).toFixed(1)} bps)`;
+
+                const ng15Delta = Number(ng15.delta || 0);
+                const ng15DeltaEl = document.getElementById('ng15Delta');
+                if (ng15DeltaEl) {
+                    ng15DeltaEl.innerText = `${ng15Delta >= 0 ? '+' : ''}$${ng15Delta.toFixed(4)}`;
+                    ng15DeltaEl.style.color = ng15Delta >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
+                }
+                if (document.getElementById('ng15Deadband')) document.getElementById('ng15Deadband').innerText = `Deadband: 10.0 bps ($${Number(ng15.deadband || 0.003).toFixed(4)})`;
+                if (document.getElementById('ng15RealBal')) document.getElementById('ng15RealBal').innerText = `$${shard2Val} USD`;
+                if (document.getElementById('ng15ConsolSubDesk')) document.getElementById('ng15ConsolSubDesk').innerText = `$${totalConsolVal} USD`;
+                if (document.getElementById('ng15Banner')) {
+                    document.getElementById('ng15Banner').innerHTML = `<strong>Status Quantitativo 15m:</strong>&nbsp;${ng15.status_signal || ''}`;
                 }
 
                 // Render Tables
@@ -2338,6 +2495,7 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             sol_trades = get_sol_trades()
             kalshi_trades = get_kalshi_trades()
             natgas_trades = get_natgas_trades()
+            natgas_15m_trades = get_natgas_15m_trades()
 
             is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
 
@@ -2369,6 +2527,8 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
                 "kalshi_trades": kalshi_trades,
                 "natgas_radar": GLOBAL_STATE["natgas_radar"],
                 "natgas_trades": natgas_trades,
+                "natgas_15m_radar": GLOBAL_STATE["natgas_15m_radar"],
+                "natgas_15m_trades": natgas_15m_trades,
                 "timestamp": time.time()
             }
             self.wfile.write(json.dumps(payload).encode("utf-8"))
@@ -2389,12 +2549,15 @@ def run_server():
 
     sol_mode = ENV_CFG.get('SOL_MODE', 'PAPER').upper()
     kalshi_mode = ENV_CFG.get('KALSHI_MODE', 'PAPER').upper()
+    natgas_15m_mode = ENV_CFG.get('NATGAS_15M_MODE', 'LIVE').upper()
 
     print("=" * 75)
     print(f"-> ANTIGRAVITY QUANT DESK rodando em http://localhost:{PORT}")
-    print(f"-> Polymarket BTC 5m [LIVE] | Funder: {FUNDER_ADDR}")
-    print(f"-> Polymarket SOL 5m [{sol_mode}] | Jev 5.0 bps Deadband")
-    print(f"-> Kalshi BTC 15m [{kalshi_mode}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
+    print(f"-> Desk 1: Polymarket BTC 5m [LIVE] | Funder: {FUNDER_ADDR}")
+    print(f"-> Desk 2: Polymarket SOL 5m [{sol_mode}] | Jev 5.0 bps Deadband")
+    print(f"-> Desk 3: Kalshi BTC 15m [{kalshi_mode}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
+    print(f"-> Desk 4: Kalshi NatGas EIA Storage [STANDBY] | NOAA/GFS Weather Engine")
+    print(f"-> Desk 5: Kalshi NatGas 15m [{natgas_15m_mode}] | KXNATGAS15M Intraday Trader")
     print("=" * 75)
 
     server = ThreadedTCPServer(("127.0.0.1", PORT), QuantDashboardHandler)
