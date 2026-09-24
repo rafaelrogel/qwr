@@ -1390,19 +1390,19 @@ HTML_CONTENT = """<!DOCTYPE html>
             <button id="btnPanic" class="panic-btn panic-normal mono" onclick="togglePanicButton()" title="Clique para acionar o Kill-Switch Global e pausar todos os bots">
                 🛡️ BOTS ATIVOS (BOTÃO DE PÂNICO)
             </button>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
-                <span>DESK 1: BTC LIVE</span>
+            <div class="status-chip" id="chipDesk1">
+                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
+                <span>DESK 1: BTC PAPER</span>
             </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
-                <span>DESK 2: SOL LIVE</span>
+            <div class="status-chip" id="chipDesk2">
+                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
+                <span>DESK 2: SOL PAPER</span>
             </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-cyan); color: var(--neon-cyan);"></span>
-                <span>DESK 3: KALSHI LIVE</span>
+            <div class="status-chip" id="chipDesk3">
+                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
+                <span>DESK 3: KALSHI PAPER</span>
             </div>
-            <div class="status-chip">
+            <div class="status-chip" id="chipDesk4">
                 <span class="dot-pulse" style="background: var(--neon-amber); color: var(--neon-amber);"></span>
                 <span>DESK 4: NATGAS EIA STANDBY</span>
             </div>
@@ -1506,7 +1506,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Polymarket CLOB V2 (Série btc-updown-5m)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-live">● REAL MONEY (CLOB V2)</span>
+                        <span class="desk-mode-tag mode-paper" id="btcBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
                     </div>
 
                     <div class="timer-box">
@@ -1557,7 +1557,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Polymarket sol-updown-5m (Safe 1271)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-live" id="solBadge">● REAL MONEY (POLYMARKET CLOB)</span>
+                        <span class="desk-mode-tag mode-paper" id="solBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
                     </div>
 
                     <div class="timer-box">
@@ -1672,7 +1672,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <div style="font-size: 11px; color: var(--text-faint);">Série Oficial KXBTC15M (Exchange Shard 2)</div>
                             </div>
                         </div>
-                        <span class="desk-mode-tag mode-live" id="kalshiBadge">● REAL MONEY (CFTC KALSHI)</span>
+                        <span class="desk-mode-tag mode-paper" id="kalshiBadge">● SIMULAÇÃO PAPER (PAUSADO REAL)</span>
                     </div>
 
                     <div class="timer-box">
@@ -2596,13 +2596,14 @@ def run_server():
     t_feeds = threading.Thread(target=background_feeds_worker, daemon=True)
     t_feeds.start()
 
+    btc_mode = ENV_CFG.get('EXECUTION_MODE', 'PAPER').upper()
     sol_mode = ENV_CFG.get('SOL_MODE', 'PAPER').upper()
     kalshi_mode = ENV_CFG.get('KALSHI_MODE', 'PAPER').upper()
-    natgas_15m_mode = ENV_CFG.get('NATGAS_15M_MODE', 'LIVE').upper()
+    natgas_15m_mode = ENV_CFG.get('NATGAS_15M_MODE', 'PAPER').upper()
 
     print("=" * 75)
     print(f"-> ANTIGRAVITY QUANT DESK rodando em http://localhost:{PORT}")
-    print(f"-> Desk 1: Polymarket BTC 5m [LIVE] | Funder: {FUNDER_ADDR}")
+    print(f"-> Desk 1: Polymarket BTC 5m [{btc_mode}] | Funder: {FUNDER_ADDR}")
     print(f"-> Desk 2: Polymarket SOL 5m [{sol_mode}] | Jev 5.0 bps Deadband")
     print(f"-> Desk 3: Kalshi BTC 15m [{kalshi_mode}] | Conexão Real RSA-PSS: {KALSHI_KEY_ID[:8]}...")
     print(f"-> Desk 4: Kalshi NatGas EIA Storage [STANDBY] | NOAA/GFS Weather Engine")

@@ -610,6 +610,7 @@ class LiveTrader:
                                 self.losses = total_l
                                 self.current_balance = real_bal
                                 self.session_pnl = jdata["session_pnl"]
+                                self.cumulative_cycle_pnl = round(sum(float(t.get("cycle_pnl", 0.0)) for t in jdata.get("trades", [])), 2)
                             except Exception as ej:
                                 print(f"       [Erro ao atualizar JSON na reconciliação]: {ej}")
 
