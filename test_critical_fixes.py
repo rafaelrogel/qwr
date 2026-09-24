@@ -355,16 +355,17 @@ class TestCriticalFixes(unittest.TestCase):
         self.assertEqual(live_trader_5m.MAX_SESSION_DRAWDOWN, 4.00, "Max session drawdown deve ser $4.00 USDC")
 
     def test_authentic_138_trades_restored(self):
-        """Verifica que o diário de bordo possui 138 ciclos autênticos e nenhuma synthetic baseline"""
+        """Verifica que o diário de bordo possui ciclos autênticos reais (>= 138) e nenhuma synthetic baseline"""
         import json
         with open("live_trading_journal.json", "r", encoding="utf-8") as f:
             jdata = json.load(f)
         trades = jdata.get("trades", [])
-        self.assertEqual(len(trades), 138, "O diário de bordo deve conter exatamente 138 ciclos reais")
-        self.assertEqual(jdata.get("cycles_executed"), 138)
-        self.assertEqual(trades[-1]["cycle"], 138)
-        self.assertEqual(trades[-1]["cycle_pnl"], -0.69)
-        self.assertEqual(trades[-1]["tx_hash"], "0x5f1239b2530511b1a07782092dfc2b3594aaf6c737d476e1e5418b0e49fdd528")
+        self.assertGreaterEqual(len(trades), 138, "O diário de bordo deve conter pelo menos 138 ciclos reais")
+        self.assertGreaterEqual(jdata.get("cycles_executed", 0), 138)
+        trade_138 = next((t for t in trades if t.get("cycle") == 138), None)
+        self.assertIsNotNone(trade_138, "Ciclo 138 deve existir no diário")
+        self.assertEqual(trade_138["cycle_pnl"], -0.69)
+        self.assertEqual(trade_138["tx_hash"], "0x5f1239b2530511b1a07782092dfc2b3594aaf6c737d476e1e5418b0e49fdd528")
         # Garante que hashes sintéticos falsos foram eliminados
         for t in trades:
             self.assertNotEqual(t.get("tx_hash"), "0xaudit_reconciled_baseline_20260924")

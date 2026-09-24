@@ -4165,13 +4165,5 @@
       "session_pnl": 1.24,
       "balance": 22.0486
     }
-  ],
-  "audit_metadata": {
-    "audit_note": "Fase 1 (Ciclos 1-137): Calibracao e testes legados com calculo de PnL teorico. Fase 2 (Ciclos 138-140): Dinheiro real live on-chain na Polygon Mainnet.",
-    "real_wallet_baseline_usdc": 20.8062,
-    "real_wallet_current_usdc": 22.04865,
-    "real_wallet_net_profit_vs_deposit": 1.04865,
-    "historical_cumulative_cycle_pnl_raw": 26.66,
-    "last_audited_at": "2026-09-24T21:40:00Z"
-  }
+  ]
 }

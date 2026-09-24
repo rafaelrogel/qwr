@@ -285,6 +285,7 @@ class KalshiNatGasTrader15M:
         self.mode = EXECUTION_MODE
         self.balance = 100.00 if self.mode != "LIVE" else 9.05
         self.current_open_position = None
+        self.traded_tickers = set()
         if self.mode == "LIVE":
             b_info = self.client.get_real_balance()
             self.balance = b_info.get("shard2_balance") or b_info.get("total_balance") or 9.05
@@ -296,6 +297,7 @@ class KalshiNatGasTrader15M:
                 with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.current_open_position = data.get("open_position")
+                    self.traded_tickers = set(t.get("ticker") for t in data.get("trades", []) if t.get("ticker"))
                     if self.mode != "LIVE":
                         self.balance = data.get("current_balance", 100.00)
                     else:
@@ -396,6 +398,22 @@ class KalshiNatGasTrader15M:
         target_market = markets[0]
         ticker = target_market.get("ticker", "KXNATGAS15M-ACTIVE")
         strike_price = float(target_market.get("floor_strike") or target_market.get("strike_price") or spot_now)
+
+        if ticker in self.traded_tickers:
+            print(f"   [🛡️ RESTART GUARD]: Ticker {ticker} já foi operado neste ciclo/histórico. Preservando capital e evitando reentrada.")
+            self.update_live_state({
+                "ticker": ticker,
+                "strike": strike_price,
+                "spot": spot_now,
+                "seconds_elapsed": elapsed_sec,
+                "seconds_left": remaining_sec,
+                "progress_pct": round((elapsed_sec / 900) * 100, 1),
+                "mode": self.mode,
+                "balance": self.balance,
+                "status_signal": f"RESTART GUARD: Ticker {ticker} já operado nesta janela"
+            })
+            time.sleep(max(1, remaining_sec))
+            return
 
         delta = spot_now - strike_price
         dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS, 4))
@@ -592,6 +610,7 @@ class KalshiNatGasTrader15M:
             "spot_entry": spot_now
         }
         self.save_open_position(pos_info)
+        self.traded_tickers.add(ticker)
 
         # 8. Monitoramento Intra-Vela e Take-Profit (SirMartingale)
         sold_early = False
@@ -630,8 +649,10 @@ class KalshiNatGasTrader15M:
                             break
 
         # 9. Apuração Final e Liquidação Oficial
-        # Aguarda a vela fechar completamente
-        time_to_close = 900 - elapsed_sec
+        # Aguarda a vela fechar completamente (calculando o tempo real restante para evitar overshoot)
+        now_utc_end = datetime.now(timezone.utc)
+        current_elapsed = (now_utc_end.minute % 15) * 60 + now_utc_end.second
+        time_to_close = max(0, 900 - current_elapsed)
         if time_to_close > 0:
             print(f"[*] Aguardando {time_to_close + 5}s até fechamento oficial e oráculo...")
             time.sleep(time_to_close + 5)
@@ -646,9 +667,9 @@ class KalshiNatGasTrader15M:
                 print(f"\n    [🏛️ ORÁCULO OFICIAL KALSHI/PYTH]: Resultado oficial consolidado: {official_winner}")
 
         if not official_winner:
-            # Fallback para spot Henry Hub de fechamento
+            # Fallback para spot Henry Hub de fechamento (estritamente maior para YES na Kalshi)
             final_spot = get_natgas_spot() or spot_now
-            official_winner = "YES" if final_spot >= strike_price else "NO"
+            official_winner = "YES" if final_spot > strike_price else "NO"
             winner_source = "HENRY_HUB_SPOT_FALLBACK"
 
         # Cálculo financeiro

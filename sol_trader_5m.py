@@ -51,10 +51,8 @@ for _ts in ROUNDING_CONFIG:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
-JOURNAL_JSON = os.path.join(BASE_DIR, "sol_trading_journal.json")
 LIVE_STATE_JSON = os.path.join(BASE_DIR, "sol_live_market_state.json")
 
-# Carrega credenciais do .env
 def load_env_config() -> Dict[str, str]:
     cfg = {}
     if os.path.exists(ENV_PATH):
@@ -70,7 +68,8 @@ ENV_CFG = load_env_config()
 POLY_FUNDER_ADDRESS = ENV_CFG.get("POLY_FUNDER_ADDRESS", "0xE00Bd7989108c9016cCF4479ce03BaCa09f6314c")
 POLY_PRIVATE_KEY_RAW = ENV_CFG.get("POLYGON_PRIVATE_KEY", "").strip()
 POLYGON_PRIVATE_KEY = POLY_PRIVATE_KEY_RAW[2:] if POLY_PRIVATE_KEY_RAW.startswith("0x") else POLY_PRIVATE_KEY_RAW
-SOL_MODE = ENV_CFG.get("SOL_MODE", "LIVE").upper()
+SOL_MODE = ENV_CFG.get("SOL_MODE", "PAPER").upper()
+JOURNAL_JSON = os.path.join(BASE_DIR, "sol_trading_journal.json" if SOL_MODE == "LIVE" else "sol_paper_journal.json")
 
 # ===================== PARÂMETROS QUANTITATIVOS (JEV AI CALIBRATED) =====================
 FIXED_STAKE = 1.00                # $1.00 por aposta

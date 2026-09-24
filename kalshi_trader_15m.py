@@ -36,7 +36,6 @@ if sys.platform == "win32":
 # ===================== CONFIGURAÇÕES GERAIS =====================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
-JOURNAL_JSON = os.path.join(BASE_DIR, "kalshi_trading_journal.json")
 
 # Endpoints Kalshi API v2
 KALSHI_API_PROD = "https://external-api.kalshi.com/trade-api/v2"
@@ -65,7 +64,8 @@ def load_env_config() -> Dict[str, str]:
     return cfg
 
 ENV_CFG = load_env_config()
-EXECUTION_MODE = ENV_CFG.get("KALSHI_MODE", "LIVE").upper() # 'PAPER' ou 'LIVE'
+EXECUTION_MODE = ENV_CFG.get("KALSHI_MODE", "PAPER").upper() # 'PAPER' ou 'LIVE' (Segurança: Default = PAPER)
+JOURNAL_JSON = os.path.join(BASE_DIR, "kalshi_trading_journal.json" if EXECUTION_MODE == "LIVE" else "kalshi_paper_journal.json")
 KALSHI_KEY_ID = ENV_CFG.get("KALSHI_KEY_ID", "")
 raw_key_path = ENV_CFG.get("KALSHI_PRIVATE_KEY_PATH", "kalshi.txt")
 KALSHI_PRIVATE_KEY_PATH = raw_key_path if os.path.isabs(raw_key_path) else os.path.join(BASE_DIR, raw_key_path)

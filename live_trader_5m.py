@@ -382,7 +382,14 @@ class LiveTrader:
         self.liq_watcher = get_liquidation_watcher()
         self.cvd_watcher = get_cvd_watcher()
 
-        self.execution_mode = self.cfg.get("EXECUTION_MODE", "live").lower()
+        self.execution_mode = self.cfg.get("EXECUTION_MODE", "paper").lower()
+        if self.execution_mode == "paper":
+            self.journal_json = os.path.join(BASE_DIR, "paper_trading_journal.json")
+            self.journal_csv = os.path.join(BASE_DIR, "paper_trading_journal.csv")
+        else:
+            self.journal_json = JOURNAL_JSON
+            self.journal_csv = JOURNAL_CSV
+
         self.lock_file = None
         self.journal_lock = threading.Lock()
         self.traded_windows = self._load_traded_windows()
@@ -393,9 +400,9 @@ class LiveTrader:
     def _load_traded_windows(self) -> set:
         """Carrega todas as janelas (window_ts) ja negociadas para evitar duplicacoes no restart"""
         traded = set()
-        if os.path.exists(JOURNAL_JSON):
+        if os.path.exists(self.journal_json):
             try:
-                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                with open(self.journal_json, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 for t in data.get("trades", []):
                     w = t.get("window_ts")
@@ -407,8 +414,8 @@ class LiveTrader:
 
     def _init_journal(self):
         """Inicializa arquivos de auditoria se nao existirem"""
-        if not os.path.exists(JOURNAL_CSV):
-            with open(JOURNAL_CSV, "w", newline="", encoding="utf-8") as f:
+        if not os.path.exists(self.journal_csv):
+            with open(self.journal_csv, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     "timestamp", "cycle_num", "window_ts", "strike_K", "entry_spot",
@@ -419,9 +426,9 @@ class LiveTrader:
                     "early_sold", "early_sell_price", "scour_executed", "scour_side", "scour_tx_hash"
                 ])
 
-        if os.path.exists(JOURNAL_JSON):
+        if os.path.exists(self.journal_json):
             try:
-                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                with open(self.journal_json, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.total_spent = data.get("total_spent", 0.0)
                     self.wins = data.get("wins", 0)
@@ -432,9 +439,9 @@ class LiveTrader:
                     self.cumulative_cycle_pnl = round(sum(float(t.get("cycle_pnl", 0.0)) for t in trades), 2)
                     self.recent_winners = [r["winner"] for r in trades[-5:] if r.get("winner")]
             except Exception as ej:
-                print(f"[ALERTA CRÍTICO] Falha ao ler {JOURNAL_JSON}: {ej}. Criando backup de seguranca.")
+                print(f"[ALERTA CRÍTICO] Falha ao ler {self.journal_json}: {ej}. Criando backup de seguranca.")
                 try:
-                    os.replace(JOURNAL_JSON, f"{JOURNAL_JSON}.corrupt-{int(time.time())}")
+                    os.replace(self.journal_json, f"{self.journal_json}.corrupt-{int(time.time())}")
                 except Exception:
                     pass
 
@@ -478,9 +485,9 @@ class LiveTrader:
 
             # Atualiza saldo real da carteira
             bal = self.get_usdc_balance()
-            if os.path.exists(JOURNAL_JSON):
+            if os.path.exists(self.journal_json):
                 try:
-                    with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    with open(self.journal_json, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     self.session_initial_balance = float(data.get("session_initial_balance", bal))
                 except Exception:
@@ -581,9 +588,9 @@ class LiveTrader:
                     real_bal = self.get_usdc_balance()
 
                     with self.journal_lock:
-                        if os.path.exists(JOURNAL_JSON):
+                        if os.path.exists(self.journal_json):
                             try:
-                                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                                with open(self.journal_json, "r", encoding="utf-8") as f:
                                     jdata = json.load(f)
 
                                 for t in jdata.get("trades", []):
@@ -607,7 +614,7 @@ class LiveTrader:
                                 jdata["session_pnl"] = round(real_bal - jdata.get("session_initial_balance", real_bal), 2)
                                 jdata["total_pnl_vs_deposit"] = round(real_bal - self.initial_deposit, 2)
 
-                                _atomic_json_write(JOURNAL_JSON, jdata)
+                                _atomic_json_write(self.journal_json, jdata)
 
                                 self.wins = total_w
                                 self.losses = total_l
@@ -617,10 +624,10 @@ class LiveTrader:
                             except Exception as ej:
                                 print(f"       [Erro ao atualizar JSON na reconciliação]: {ej}")
 
-                        if os.path.exists(JOURNAL_CSV):
+                        if os.path.exists(self.journal_csv):
                             try:
                                 rows = []
-                                with open(JOURNAL_CSV, "r", newline="", encoding="utf-8") as f:
+                                with open(self.journal_csv, "r", newline="", encoding="utf-8") as f:
                                     reader = csv.reader(f)
                                     for r in reader:
                                         if len(r) > 17 and r[1] == str(cycle_num):
@@ -630,13 +637,13 @@ class LiveTrader:
                                             r[17] = str(new_cycle_pnl)
                                             r[19] = str(round(real_bal, 2))
                                         rows.append(r)
-                                tmp_csv = JOURNAL_CSV + ".tmp"
+                                tmp_csv = self.journal_csv + ".tmp"
                                 with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
                                     writer = csv.writer(f)
                                     writer.writerows(rows)
                                     f.flush()
                                     os.fsync(f.fileno())
-                                os.replace(tmp_csv, JOURNAL_CSV)
+                                os.replace(tmp_csv, self.journal_csv)
                             except Exception as ec:
                                 print(f"       [Erro ao atualizar CSV na reconciliação]: {ec}")
 
@@ -647,9 +654,9 @@ class LiveTrader:
                     time.sleep(2.0)
                     real_bal = self.get_usdc_balance()
                     with self.journal_lock:
-                        if os.path.exists(JOURNAL_JSON):
+                        if os.path.exists(self.journal_json):
                             try:
-                                with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                                with open(self.journal_json, "r", encoding="utf-8") as f:
                                     jdata = json.load(f)
                                 for t in jdata.get("trades", []):
                                     if t.get("cycle") == cycle_num:
@@ -659,28 +666,28 @@ class LiveTrader:
                                 jdata["current_balance"] = real_bal
                                 jdata["session_pnl"] = round(real_bal - jdata.get("session_initial_balance", real_bal), 2)
                                 jdata["total_pnl_vs_deposit"] = round(real_bal - self.initial_deposit, 2)
-                                _atomic_json_write(JOURNAL_JSON, jdata)
+                                _atomic_json_write(self.journal_json, jdata)
                                 self.current_balance = real_bal
                                 self.session_pnl = jdata["session_pnl"]
                             except Exception as ej:
                                 print(f"       [Erro ao atualizar JSON na confirmação]: {ej}")
 
-                        if os.path.exists(JOURNAL_CSV):
+                        if os.path.exists(self.journal_csv):
                             try:
                                 rows = []
-                                with open(JOURNAL_CSV, "r", newline="", encoding="utf-8") as f:
+                                with open(self.journal_csv, "r", newline="", encoding="utf-8") as f:
                                     reader = csv.reader(f)
                                     for r in reader:
                                         if len(r) > 19 and r[1] == str(cycle_num):
                                             r[19] = str(round(real_bal, 2))
                                         rows.append(r)
-                                tmp_csv = JOURNAL_CSV + ".tmp"
+                                tmp_csv = self.journal_csv + ".tmp"
                                 with open(tmp_csv, "w", newline="", encoding="utf-8") as f:
                                     writer = csv.writer(f)
                                     writer.writerows(rows)
                                     f.flush()
                                     os.fsync(f.fileno())
-                                os.replace(tmp_csv, JOURNAL_CSV)
+                                os.replace(tmp_csv, self.journal_csv)
                             except Exception as ec:
                                 print(f"       [Erro ao atualizar CSV na confirmação]: {ec}")
 
@@ -1645,7 +1652,7 @@ class LiveTrader:
         chosen_shares = shares if (has_primary or sold_early) else scour_shares
 
         with self.journal_lock:
-            with open(JOURNAL_CSV, "a", newline="", encoding="utf-8") as f:
+            with open(self.journal_csv, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1695,7 +1702,7 @@ class LiveTrader:
             }
 
             json_data = {
-                "mode": "LIVE_TRADING_V2_CHAINLINK_BONEREAPER_SIRMARTINGALE_SCOUR",
+                "mode": f"{self.execution_mode.upper()}_TRADING_V2_CHAINLINK_BONEREAPER_SIRMARTINGALE_SCOUR",
                 "execution_mode": self.execution_mode,
                 "funder": self.funder_address,
                 "session_initial_balance": self.session_initial_balance,
@@ -1714,15 +1721,15 @@ class LiveTrader:
                 "last_updated": datetime.now().isoformat(),
                 "trades": []
             }
-            if os.path.exists(JOURNAL_JSON):
+            if os.path.exists(self.journal_json):
                 try:
-                    with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
+                    with open(self.journal_json, "r", encoding="utf-8") as f:
                         prev = json.load(f)
                         json_data["trades"] = prev.get("trades", [])
                 except Exception:
                     pass
             json_data["trades"].append(trade_entry)
-            _atomic_json_write(JOURNAL_JSON, json_data)
+            _atomic_json_write(self.journal_json, json_data)
 
         # 11. Enfileira para Reconciliacao Assincrona oficial (2-3 min apos fechamento da vela)
         if total_stake > 0:
