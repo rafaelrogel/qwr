@@ -1391,16 +1391,16 @@ HTML_CONTENT = """<!DOCTYPE html>
                 🛡️ BOTS ATIVOS (BOTÃO DE PÂNICO)
             </button>
             <div class="status-chip" id="chipDesk1">
-                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
-                <span>DESK 1: BTC PAPER</span>
+                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
+                <span>DESK 1: BTC LIVE</span>
             </div>
             <div class="status-chip" id="chipDesk2">
-                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
-                <span>DESK 2: SOL PAPER</span>
+                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
+                <span>DESK 2: SOL LIVE</span>
             </div>
             <div class="status-chip" id="chipDesk3">
-                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
-                <span>DESK 3: KALSHI PAPER</span>
+                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
+                <span>DESK 3: KALSHI LIVE</span>
             </div>
             <div class="status-chip" id="chipDesk4">
                 <span class="dot-pulse" style="background: var(--neon-amber); color: var(--neon-amber);"></span>
@@ -2139,6 +2139,37 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const clockEl = document.getElementById('clockUTC');
                 if (clockEl) clockEl.innerText = `UTC: ${now.toISOString().substring(11, 19)}`;
 
+                // Sincroniza chips dos Desks 1, 2, 3 (LIVE vs PAPER)
+                const btcMode = (data.btc_mode || 'LIVE').toUpperCase();
+                const chipDesk1 = document.getElementById('chipDesk1');
+                if (chipDesk1) {
+                    if (btcMode === 'LIVE') {
+                        chipDesk1.innerHTML = '<span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span><span>DESK 1: BTC LIVE</span>';
+                    } else {
+                        chipDesk1.innerHTML = '<span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span><span>DESK 1: BTC PAPER</span>';
+                    }
+                }
+
+                const solMode = (data.sol_mode || (data.sol_radar && data.sol_radar.mode) || 'LIVE').toUpperCase();
+                const chipDesk2 = document.getElementById('chipDesk2');
+                if (chipDesk2) {
+                    if (solMode === 'LIVE') {
+                        chipDesk2.innerHTML = '<span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span><span>DESK 2: SOL LIVE</span>';
+                    } else {
+                        chipDesk2.innerHTML = '<span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span><span>DESK 2: SOL PAPER</span>';
+                    }
+                }
+
+                const kalshiMode = (data.kalshi_mode || (data.kalshi_radar && data.kalshi_radar.mode) || 'LIVE').toUpperCase();
+                const chipDesk3 = document.getElementById('chipDesk3');
+                if (chipDesk3) {
+                    if (kalshiMode === 'LIVE') {
+                        chipDesk3.innerHTML = '<span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span><span>DESK 3: KALSHI LIVE</span>';
+                    } else {
+                        chipDesk3.innerHTML = '<span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span><span>DESK 3: KALSHI PAPER</span>';
+                    }
+                }
+
                 // =========================================================
                 // 1. SALDO COMPARTILHADO & MÉTRICAS POLYMARKET (DESKS 1 & 2)
                 // =========================================================
@@ -2549,6 +2580,10 @@ class QuantDashboardHandler(http.server.BaseHTTPRequestHandler):
             is_halted = os.path.exists(HALT_FILE) or os.path.exists(EMERGENCY_FILE)
 
             payload = {
+                "btc_mode": ENV_CFG.get("EXECUTION_MODE", "LIVE").upper(),
+                "sol_mode": ENV_CFG.get("SOL_MODE", "LIVE").upper(),
+                "kalshi_mode": ENV_CFG.get("KALSHI_MODE", "LIVE").upper(),
+                "natgas_15m_mode": ENV_CFG.get("NATGAS_15M_MODE", "PAPER").upper(),
                 "account": GLOBAL_STATE["account"],
                 "kalshi_balances": GLOBAL_STATE.get("kalshi_balances", {}),
                 "kill_switch_active": is_halted,
