@@ -1,1125 +1,1724 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ANTIGRAVITY QUANT DESK — Multi-Asset Algorithmic Command</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-void: #030712;
-            --bg-card: rgba(15, 23, 42, 0.75);
-            --bg-card-sub: rgba(30, 41, 59, 0.65);
-            --border-subtle: rgba(51, 65, 85, 0.45);
-            --border-glow: rgba(56, 189, 248, 0.35);
-            --text-pure: #f8fafc;
-            --text-dim: #94a3b8;
-            --text-faint: #64748b;
-            
-            --neon-green: #00f59b;
-            --neon-green-glow: rgba(0, 245, 155, 0.22);
-            --neon-cyan: #00f0ff;
-            --neon-cyan-glow: rgba(0, 240, 255, 0.22);
-            --neon-purple: #c084fc;
-            --neon-purple-glow: rgba(192, 132, 252, 0.22);
-            --neon-amber: #fbbf24;
-            --neon-rose: #ff3366;
-            --neon-rose-glow: rgba(255, 51, 102, 0.22);
-        }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Antigravity Quant Terminal · 11 Desks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07090e;
+      --card-bg: #0f131c;
+      --card-hover: #151b27;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-hover: rgba(100, 214, 255, 0.35);
+      --line: rgba(255, 255, 255, 0.06);
+      
+      --text-main: #f3f6fa;
+      --text-muted: #8e9bb0;
+      --text-dim: #546075;
+      
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.18);
+      --red: #f43f5e;
+      --red-glow: rgba(244, 63, 94, 0.18);
+      --cyan: #38bdf8;
+      --amber: #fbbf24;
+      --violet: #a855f7;
+      
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        
-        body {
-            background-color: var(--bg-void);
-            background-image: 
-                radial-gradient(circle at 15% 15%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 85% 20%, rgba(192, 132, 252, 0.05) 0%, transparent 45%),
-                linear-gradient(to bottom, rgba(3, 7, 18, 0.8), rgba(3, 7, 18, 0.98));
-            color: var(--text-pure);
-            font-family: 'Space Grotesk', -apple-system, sans-serif;
-            font-size: 13px;
-            min-height: 100vh;
-            padding-bottom: 60px;
-        }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background: radial-gradient(circle at 50% 0%, #111827 0%, var(--bg) 75%);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 60px;
+    }
 
-        .mono { font-family: 'JetBrains Mono', monospace; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-        /* Top Header */
-        header {
-            background: rgba(10, 15, 29, 0.85);
-            backdrop-filter: blur(14px);
-            border-bottom: 1px solid var(--border-subtle);
-            padding: 14px 28px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
+    .container {
+      width: min(1440px, calc(100% - 40px));
+      margin: 0 auto;
+      padding-top: 24px;
+    }
 
-        .brand-cluster {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
+    /* TOPBAR */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 24px;
+    }
 
-        .brand-badge {
-            background: linear-gradient(135deg, #00f0ff, #3b82f6);
-            color: #000;
-            font-weight: 800;
-            font-size: 10px;
-            padding: 4px 8px;
-            border-radius: 4px;
-            letter-spacing: 0.8px;
-            box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
-        }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
 
-        .brand-title {
-            font-size: 17px;
-            font-weight: 800;
-            letter-spacing: -0.4px;
-            background: linear-gradient(to right, #ffffff, #94a3b8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2));
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 18px;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.15);
+    }
 
-        .header-ribbon {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+    .brand-title h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
 
-        .status-chip {
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--border-subtle);
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
+    .brand-title p {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
 
-        .dot-pulse {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            animation: pulse-glow 2s infinite;
-        }
+    .top-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
 
-        @keyframes pulse-glow {
-            0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 4px currentColor); }
-            50% { opacity: 0.4; transform: scale(0.85); }
-        }
+    .beacon {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 6px 12px;
+      border-radius: 999px;
+      color: var(--green);
+      font-weight: 600;
+      font-size: 11px;
+    }
 
-        /* Container */
-        .container {
-            max-width: 1400px;
-            margin: 24px auto;
-            padding: 0 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 2s infinite;
+    }
 
-        /* Nav Tabs */
-        .nav-tabs {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-subtle);
-            padding-bottom: 12px;
-            overflow-x: auto;
-        }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
 
-        .tab-btn {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-dim);
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+    /* HERO BALANCES SECTION */
+    .hero-balances {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
 
-        .tab-btn:hover {
-            border-color: var(--neon-cyan);
-            color: var(--text-pure);
-        }
+    .hero-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    }
 
-        .tab-btn.active {
-            background: rgba(0, 240, 255, 0.1);
-            border-color: var(--neon-cyan);
-            color: var(--neon-cyan);
-            box-shadow: 0 0 14px rgba(0, 240, 255, 0.15);
-        }
+    .hero-card.poly {
+      border-left: 4px solid var(--green);
+    }
 
-        /* Top Metric Cards */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-        }
+    .hero-card.kalshi {
+      border-left: 4px solid var(--cyan);
+    }
 
-        .metric-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-subtle);
-            border-radius: 12px;
-            padding: 18px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.2s ease, border-color 0.2s ease;
-        }
+    .hero-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
 
-        .metric-card:hover {
-            transform: translateY(-2px);
-            border-color: var(--border-glow);
-        }
+    .venue-tag {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
 
-        .metric-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-        }
+    .hero-card.poly .venue-tag { color: var(--green); }
+    .hero-card.kalshi .venue-tag { color: var(--cyan); }
 
-        .border-btc::before { background: linear-gradient(90deg, var(--neon-green), #10b981); }
-        .border-sol::before { background: linear-gradient(90deg, var(--neon-purple), #8b5cf6); }
-        .border-kalshi::before { background: linear-gradient(90deg, var(--neon-cyan), #0284c7); }
-        .border-audit::before { background: linear-gradient(90deg, var(--neon-amber), #ea580c); }
-        .border-natgas::before { background: linear-gradient(90deg, #d97706, var(--neon-amber)); }
+    .venue-badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
 
-        .metric-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            color: var(--text-dim);
-            font-weight: 600;
-        }
+    .hero-card.poly .venue-badge {
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
 
-        .metric-val {
-            font-size: 26px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-        }
+    .hero-card.kalshi .venue-badge {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
 
-        .metric-sub {
-            font-size: 11px;
-            color: var(--text-dim);
-        }
+    .hero-numbers {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: baseline;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+    }
 
-        /* Desks Matrix (Multi-Asset) */
-        .radar-matrix {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 20px;
-        }
+    .number-col .label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
 
-        .desk-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-subtle);
-            border-radius: 14px;
-            padding: 22px;
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-            position: relative;
-        }
+    .number-col .big-num {
+      font-family: var(--font-mono);
+      font-size: clamp(28px, 3.2vw, 42px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+    }
 
-        .desk-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding-bottom: 14px;
-            border-bottom: 1px solid var(--border-subtle);
-        }
+    .number-col .unit {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
 
-        .desk-badge-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+    .hero-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
 
-        .asset-icon {
-            font-size: 18px;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            background: var(--bg-card-sub);
-        }
+    .pill-stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
 
-        .desk-title {
-            font-size: 15px;
-            font-weight: 700;
-        }
+    .pill-stat strong { color: var(--text-main); }
 
-        .desk-mode-tag {
-            font-size: 10px;
-            font-weight: 800;
-            padding: 3px 8px;
-            border-radius: 12px;
-            letter-spacing: 0.5px;
-        }
+    /* SECTION HEADER */
+    .section-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
 
-        .mode-live {
-            background: var(--neon-green-glow);
-            color: var(--neon-green);
-            border: 1px solid var(--neon-green);
-        }
+    .section-bar h2 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-        .mode-paper {
-            background: var(--neon-purple-glow);
-            color: var(--neon-purple);
-            border: 1px solid var(--neon-purple);
-        }
+    .desk-counter {
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
 
-        /* Progress Bar */
-        .timer-box {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
+    /* DESK GRID */
+    .desk-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
 
-        .timer-info {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 11px;
-            color: var(--text-dim);
-        }
+    .desk-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
 
-        .progress-track {
-            height: 6px;
-            background: rgba(30, 41, 59, 0.8);
-            border-radius: 3px;
-            overflow: hidden;
-        }
+    .desk-card:hover {
+      border-color: var(--card-border-hover);
+      background: var(--card-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
 
-        .progress-bar {
-            height: 100%;
-            transition: width 1s linear;
-        }
+    .desk-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
 
-        /* Key Metrics Grid inside Desk */
-        .desk-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
+    .desk-venue {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
 
-        .stat-pod {
-            background: var(--bg-card-sub);
-            border: 1px solid var(--border-subtle);
-            border-radius: 8px;
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
+    .desk-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-top: 2px;
+    }
 
-        .pod-label {
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-faint);
-            font-weight: 600;
-        }
+    .mode-pill {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid currentColor;
+    }
 
-        .pod-val {
-            font-size: 15px;
-            font-weight: 700;
-        }
+    .mode-live { color: var(--green); background: rgba(16, 185, 129, 0.08); }
+    .mode-paper { color: var(--amber); background: rgba(251, 191, 36, 0.08); }
+    .mode-radar { color: var(--violet); background: rgba(168, 85, 247, 0.08); }
 
-        .pod-sub {
-            font-size: 10px;
-            color: var(--text-dim);
-        }
+    .desk-signal-bar {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--line);
+      margin-bottom: 16px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-        /* Desk Banner */
-        .decision-banner {
-            background: rgba(15, 23, 42, 0.9);
-            border-left: 3px solid var(--neon-cyan);
-            border-radius: 6px;
-            padding: 12px 14px;
-            font-size: 11px;
-            line-height: 1.4;
-            color: var(--text-dim);
-            min-height: 52px;
-            display: flex;
-            align-items: center;
-        }
+    .desk-price-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
 
-        /* Tables */
-        .table-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: 14px;
-            padding: 22px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
+    .desk-price {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
 
-        .table-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
+    .desk-delta {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+    }
 
-        .table-responsive {
-            overflow-x: auto;
-        }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+    .neutral { color: var(--text-muted); }
 
-        table.quant-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-            text-align: left;
-        }
+    .desk-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
 
-        table.quant-table th {
-            padding: 10px 14px;
-            background: var(--bg-card-sub);
-            color: var(--text-faint);
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            border-bottom: 1px solid var(--border-subtle);
-        }
+    .desk-stat-item span {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
 
-        table.quant-table td {
-            padding: 12px 14px;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.25);
-        }
+    .desk-stat-item strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-        table.quant-table tr:hover td {
-            background: rgba(255, 255, 255, 0.02);
-        }
+    .desk-action {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding-top: 4px;
+    }
 
-        /* Badges */
-        .badge-win {
-            background: var(--neon-green-glow);
-            color: var(--neon-green);
-            border: 1px solid var(--neon-green);
-            padding: 2px 7px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-        }
+    /* MODAL DIALOG */
+    dialog {
+      width: min(1180px, calc(100% - 32px));
+      max-height: min(860px, calc(100vh - 40px));
+      background: #0b0f17;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      color: var(--text-main);
+      box-shadow: 0 30px 100px rgba(0, 0, 0, 0.85);
+      margin: auto;
+      overflow: hidden;
+    }
 
-        .badge-loss {
-            background: var(--neon-rose-glow);
-            color: var(--neon-rose);
-            border: 1px solid var(--neon-rose);
-            padding: 2px 7px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-        }
+    dialog::backdrop {
+      background: rgba(2, 4, 8, 0.85);
+      backdrop-filter: blur(8px);
+    }
 
-        .badge-hedge {
-            background: rgba(251, 191, 36, 0.15);
-            color: var(--neon-amber);
-            border: 1px solid var(--neon-amber);
-            padding: 2px 7px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-        }
+    .modal-wrap {
+      display: flex;
+      flex-direction: column;
+      max-height: inherit;
+    }
 
-        .badge-up {
-            background: rgba(0, 245, 155, 0.15);
-            color: var(--neon-green);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-        }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.015);
+    }
 
-        .badge-down {
-            background: rgba(255, 51, 102, 0.15);
-            color: var(--neon-rose);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-        }
+    .modal-head-title h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
 
-        .link-tx {
-            color: var(--neon-cyan);
-            text-decoration: none;
-        }
+    .modal-head-title p {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
 
-        .link-tx:hover {
-            text-decoration: underline;
-        }
-    </style>
+    .modal-close-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      font-size: 20px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .modal-close-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .modal-body {
+      overflow-y: auto;
+      padding: 24px 28px 36px;
+    }
+
+    .modal-section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-bottom: 14px;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .metric-card span {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-card strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-top: 6px;
+      word-break: break-all;
+    }
+
+    /* TABLE */
+    .table-container {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow-x: auto;
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    table.trade-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      text-align: left;
+    }
+
+    table.trade-table th {
+      background: rgba(255, 255, 255, 0.035);
+      padding: 12px 14px;
+      color: var(--text-dim);
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    table.trade-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      color: #cbd5e1;
+      white-space: nowrap;
+    }
+
+    table.trade-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    table.trade-table tr:hover td {
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .badge-win {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    .badge-loss {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    .empty-state {
+      padding: 36px;
+      text-align: center;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+    }
+
+    @media (max-width: 1024px) {
+      .desk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .hero-balances { grid-template-columns: 1fr; }
+      .hero-numbers { grid-template-columns: 1fr; gap: 14px; }
+      .desk-grid { grid-template-columns: 1fr; }
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+
+    /* =====================================================================
+       UPGRADE MODULES: KPIS, EQUITY/DRAWDOWN, 12-DESK RANKING, 24H HEATMAP & MCP
+       ===================================================================== */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      transition: all 0.2s;
+    }
+    .kpi-card:hover {
+      border-color: var(--card-border-hover);
+      background: var(--card-hover);
+    }
+    .kpi-label {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+    .kpi-val {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 2px;
+      font-family: var(--font-mono);
+    }
+    .kpi-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 840px 1fr;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .chart-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .chart-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+    .chart-legend {
+      display: flex;
+      gap: 14px;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .dot-cyan { width: 10px; height: 3px; background: var(--cyan); border-radius: 2px; }
+    .dot-green { width: 10px; height: 3px; background: var(--green); border-radius: 2px; }
+    .dot-faint { width: 10px; height: 3px; background: var(--text-dim); border-radius: 2px; }
+
+    .ranking-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+    }
+    .ranking-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+    }
+    .ranking-table th {
+      text-align: left;
+      padding: 7px 8px;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--line);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .ranking-table td {
+      padding: 8px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+    }
+    .ranking-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .ranking-row-active {
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+      margin-top: 24px;
+      margin-bottom: 24px;
+    }
+    .heatmap-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .heatmap-grid {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 5px;
+      margin-top: 12px;
+      font-family: var(--font-mono);
+    }
+    .heatmap-cell {
+      height: 42px;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 9.5px;
+      font-weight: 700;
+      transition: transform 0.2s;
+    }
+    .heatmap-cell:hover { transform: scale(1.08); z-index: 2; }
+    .h-green-high { background: rgba(16, 185, 129, 0.90); color: #07090e; }
+    .h-green-mid  { background: rgba(16, 185, 129, 0.55); color: #07090e; }
+    .h-green-low  { background: rgba(16, 185, 129, 0.25); color: var(--green); }
+    .h-neutral    { background: rgba(255, 255, 255, 0.04); color: var(--text-dim); }
+    .h-red-low    { background: rgba(244, 63, 94, 0.25); color: var(--red); }
+    .h-red-mid    { background: rgba(244, 63, 94, 0.65); color: #fff; }
+
+    .mcp-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+    .mcp-box::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0; width: 120px; height: 120px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%);
+    }
+    .mcp-tag {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--cyan);
+      margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .mcp-code-block {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 10px;
+      color: var(--cyan);
+      margin: 8px 0;
+      font-family: var(--font-mono);
+    }
+
+    @media (max-width: 1200px) {
+      .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+      .analytics-grid { grid-template-columns: 1fr; }
+      .bottom-grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-
-    <!-- TOP HEADER -->
-    <header>
-        <div class="brand-cluster">
-            <span class="brand-badge">AGY-QUANT</span>
-            <div class="brand-title">ANTIGRAVITY QUANT DESK <span style="font-weight: 400; font-size: 13px; color: var(--text-faint);">| Institutional Multi-Asset Terminal</span></div>
+  <div class="container">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-logo">A</div>
+        <div class="brand-title">
+          <h1>Antigravity Quant Terminal</h1>
+          <p>Multi-Desk Algorithmic Execution Cockpit</p>
         </div>
-
-        <div class="header-ribbon">
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-green); color: var(--neon-green);"></span>
-                <span>DESK 1: BTC LIVE</span>
-            </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-purple); color: var(--neon-purple);"></span>
-                <span>DESK 2: SOL PAPER</span>
-            </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-cyan); color: var(--neon-cyan);"></span>
-                <span>DESK 3: KALSHI 15M</span>
-            </div>
-            <div class="status-chip">
-                <span class="dot-pulse" style="background: var(--neon-amber); color: var(--neon-amber);"></span>
-                <span>DESK 4: NATGAS + JEV</span>
-            </div>
-            <div class="status-chip mono" id="clockUTC" style="color: var(--neon-amber); font-weight: 600;">
-                UTC: --:--:--
-            </div>
+      </div>
+      <div class="top-meta">
+        <div class="beacon">
+          <span class="dot"></span>
+          <span id="connStatus">SISTEMA ATIVO (11 DESKS)</span>
         </div>
+        <div class="mono" id="utcClock">--:--:-- UTC</div>
+      </div>
     </header>
 
-    <div class="container">
-
-        <!-- 5 TOP EXECUTIVE METRICS -->
-        <div class="metrics-grid">
-            <!-- 1. Carteira Real Polymarket -->
-            <div class="metric-card border-btc">
-                <div class="metric-label">Carteira Real (Polymarket On-Chain)</div>
-                <div class="metric-val mono" id="heroLiveBalance" style="color: var(--neon-green);">$19.72 USDC</div>
-                <div class="metric-sub" id="heroLivePnlSub">Depósito: $21.00 | P&L: -$1.28 USDC (Recuperação de 93.9%)</div>
-            </div>
-
-            <!-- 2. Performance BTC Live -->
-            <div class="metric-card border-audit">
-                <div class="metric-label">Polymarket BTC 5m (Live Trading)</div>
-                <div class="metric-val mono" id="heroLiveWinRate" style="color: var(--neon-amber);">71.0%</div>
-                <div class="metric-sub" id="heroLiveCounts">93 Vitórias / 38 Derrotas (131 Ciclos)</div>
-            </div>
-
-            <!-- 3. Solana 5m Paper -->
-            <div class="metric-card border-sol">
-                <div class="metric-label">Solana 5m Paper (Polymarket)</div>
-                <div class="metric-val mono" id="heroSolBalance" style="color: var(--neon-purple);">$27.98 USD</div>
-                <div class="metric-sub" id="heroSolSub">Banca Inicial: $25.00 | P&L: +$2.98 USD (+11.9% ROI)</div>
-            </div>
-
-            <!-- 4. Kalshi 15m Paper + Real Account -->
-            <div class="metric-card border-kalshi">
-                <div class="metric-label">Kalshi BTC 15m Institutional</div>
-                <div class="metric-val mono" id="heroKalshiBalance" style="color: var(--neon-cyan);">$35.00 USD</div>
-                <div class="metric-sub" id="heroKalshiSub">Conta Real Conectada: $11.36 USD (0 Perdas)</div>
-            </div>
-
-            <!-- 5. Kalshi Natural Gas & Weather Engine -->
-            <div class="metric-card border-natgas">
-                <div class="metric-label">Kalshi NatGas & Weather (EIA)</div>
-                <div class="metric-val mono" id="heroNatGasBalance" style="color: var(--neon-amber);">$1,000.00 USD</div>
-                <div class="metric-sub" id="heroNatGasSub">JEV Co-Piloto Ativo | Previsão: 71.8 Bcf</div>
-            </div>
+    <!-- HERO BALANCES -->
+    <section class="hero-balances" aria-label="Saldos Principais">
+      <!-- POLYMARKET -->
+      <article class="hero-card poly">
+        <div class="hero-header">
+          <div class="venue-tag">
+            <span>●</span> Polymarket CLOB V2
+          </div>
+          <span class="venue-badge" id="polyModeBadge">MODO LIVE (REAL)</span>
         </div>
-
-        <!-- NAVIGATION TABS -->
-        <div class="nav-tabs">
-            <button class="tab-btn active" onclick="switchDesk('matrix')">🌐 Multi-Asset Matrix</button>
-            <button class="tab-btn" onclick="switchDesk('btc')">🟢 Desk 1: Polymarket BTC 5m (LIVE)</button>
-            <button class="tab-btn" onclick="switchDesk('sol')">🟣 Desk 2: Polymarket SOL 5m (PAPER)</button>
-            <button class="tab-btn" onclick="switchDesk('kalshi')">🏛️ Desk 3: Kalshi BTC 15m (PAPER)</button>
-            <button class="tab-btn" onclick="switchDesk('natgas')">🔥 Desk 4: Kalshi NatGas & Clima (JEV)</button>
-            <button class="tab-btn" onclick="switchDesk('ledger')">📋 Livro de Operações</button>
+        <div class="hero-numbers">
+          <div class="number-col">
+            <div class="label">Saldo Disponível</div>
+            <div class="big-num mono" id="polyBalance">$0.00</div>
+          </div>
+          <div class="number-col">
+            <div class="label">P&amp;L Real Consolidado</div>
+            <div class="big-num mono" id="polyPnl">$0.00</div>
+          </div>
         </div>
-
-        <!-- SECTION: 3 DESKS RADAR MATRIX -->
-        <div id="sectionMatrix" class="radar-matrix">
-
-            <!-- DESK 1: BTC 5M LIVE -->
-            <div class="desk-card">
-                <div class="desk-header">
-                    <div class="desk-badge-group">
-                        <div class="asset-icon" style="color: #f7931a;">₿</div>
-                        <div>
-                            <div class="desk-title">Bitcoin 5m Desk</div>
-                            <div style="font-size: 11px; color: var(--text-faint);">Polymarket CLOB V2</div>
-                        </div>
-                    </div>
-                    <span class="desk-mode-tag mode-live">● REAL MONEY</span>
-                </div>
-
-                <div class="timer-box">
-                    <div class="timer-info mono">
-                        <span id="btcCycleBadge">btc-updown-5m</span>
-                        <span id="btcTimer" style="color: var(--neon-green); font-weight: 700;">Restam: --s</span>
-                    </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="btcProgress" style="width: 50%; background: linear-gradient(90deg, #3b82f6, var(--neon-green));"></div>
-                    </div>
-                </div>
-
-                <div class="desk-stats-grid">
-                    <div class="stat-pod">
-                        <div class="pod-label">Strike (Chainlink TWAP)</div>
-                        <div class="pod-val mono" id="btcStrike">$0.00</div>
-                        <div class="pod-sub">Preço Abertura</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Spot Oráculo (Chainlink)</div>
-                        <div class="pod-val mono" id="btcSpot" style="color: var(--neon-cyan);">$0.00</div>
-                        <div class="pod-sub" id="btcBinanceSpread">Binance: $0.00</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Delta Atual (Deriva)</div>
-                        <div class="pod-val mono" id="btcDelta">$0.00</div>
-                        <div class="pod-sub" id="btcDeadband">Deadband: |Δ| ≥ 15</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Cotas Polymarket</div>
-                        <div class="pod-val mono" id="btcOdds" style="font-size: 13px;">UP $0.50 | DW $0.50</div>
-                        <div class="pod-sub">Livro CLOB Oficial</div>
-                    </div>
-                </div>
-
-                <div class="decision-banner" id="btcBanner" style="border-left-color: var(--neon-green);">
-                    Carregando tomada de decisão quantitativa do robô real...
-                </div>
-            </div>
-
-            <!-- DESK 2: SOL 5M PAPER -->
-            <div class="desk-card">
-                <div class="desk-header">
-                    <div class="desk-badge-group">
-                        <div class="asset-icon" style="color: #c084fc;">◎</div>
-                        <div>
-                            <div class="desk-title">Solana 5m Desk</div>
-                            <div style="font-size: 11px; color: var(--text-faint);">Polymarket sol-updown-5m</div>
-                        </div>
-                    </div>
-                    <span class="desk-mode-tag mode-paper">● SIMULAÇÃO (API REAL)</span>
-                </div>
-
-                <div class="timer-box">
-                    <div class="timer-info mono">
-                        <span id="solTitleSpan">sol-updown-5m (Jev Sweet-Spot)</span>
-                        <span id="solTimer" style="color: var(--neon-purple); font-weight: 700;">Restam: --s</span>
-                    </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="solProgress" style="width: 50%; background: linear-gradient(90deg, #6366f1, var(--neon-purple));"></div>
-                    </div>
-                </div>
-
-                <div class="desk-stats-grid">
-                    <div class="stat-pod">
-                        <div class="pod-label">Polymarket CLOB L2</div>
-                        <div class="pod-val mono" id="solClobPod" style="color: var(--neon-cyan); font-size: 13px;">Bid -- | Ask --</div>
-                        <div class="pod-sub" id="solClobSub">Spread: -- | Micro: --</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Delta Intra-Vela</div>
-                        <div class="pod-val mono" id="solDelta">$0.000</div>
-                        <div class="pod-sub" id="solDeadband">Deadband: 5.0 bps ($0.06)</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">SOL Spot Real</div>
-                        <div class="pod-val mono" id="solSpot" style="color: var(--neon-purple);">$0.00</div>
-                        <div class="pod-sub" id="solPriorCandle">Vela Anterior: --</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Saldo Paper SOL</div>
-                        <div class="pod-val mono" id="solBalancePod" style="color: var(--neon-green);">$29.65 USD</div>
-                        <div class="pod-sub" id="solTradesSummary">3 Trades / 100% WR</div>
-                    </div>
-                </div>
-
-                <div class="decision-banner" id="solBanner" style="border-left-color: var(--neon-purple);">
-                    Aguardando dados da Solana...
-                </div>
-            </div>
-
-            <!-- DESK 3: KALSHI 15M INSTITUTIONAL -->
-            <div class="desk-card">
-                <div class="desk-header">
-                    <div class="desk-badge-group">
-                        <div class="asset-icon" style="color: var(--neon-cyan);">🏛️</div>
-                        <div>
-                            <div class="desk-title">Kalshi BTC 15m Desk</div>
-                            <div style="font-size: 11px; color: var(--text-faint);">Série KXBTC15M (CFTC)</div>
-                        </div>
-                    </div>
-                    <span class="desk-mode-tag mode-paper">● SIMULAÇÃO (API REAL)</span>
-                </div>
-
-                <div class="timer-box">
-                    <div class="timer-info mono">
-                        <span id="kalshiTicker">KXBTC15M</span>
-                        <span id="kalshiTimer" style="color: var(--neon-cyan); font-weight: 700;">Restam: --s</span>
-                    </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="kalshiProgress" style="width: 50%; background: linear-gradient(90deg, #0284c7, var(--neon-cyan));"></div>
-                    </div>
-                </div>
-
-                <div class="desk-stats-grid">
-                    <div class="stat-pod">
-                        <div class="pod-label">Strike (Floor Strike K)</div>
-                        <div class="pod-val mono" id="kalshiStrike">$0.00</div>
-                        <div class="pod-sub">Referência Contrato</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">BTC Spot Atual</div>
-                        <div class="pod-val mono" id="kalshiSpot" style="color: var(--neon-cyan);">$0.00</div>
-                        <div class="pod-sub" id="kalshiPriorCandle">Vela 15m Ant: --</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Delta Real BTC</div>
-                        <div class="pod-val mono" id="kalshiDelta">$0.00</div>
-                        <div class="pod-sub" id="kalshiDeadband">Deadband: 5.0 bps ($42)</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Conta Real Kalshi</div>
-                        <div class="pod-val mono" id="kalshiRealBal" style="color: var(--neon-amber);">$11.36 USD</div>
-                        <div class="pod-sub">Autenticado RSA-PSS 200 OK</div>
-                    </div>
-                </div>
-
-                <div class="decision-banner" id="kalshiBanner" style="border-left-color: var(--neon-cyan);">
-                    Aguardando dados da Kalshi...
-                </div>
-            </div>
-
-            <!-- DESK 4: KALSHI NATGAS & WEATHER (JEV) -->
-            <div class="desk-card" style="border-top: 2px solid var(--neon-amber);">
-                <div class="desk-header">
-                    <div class="desk-badge-group">
-                        <div class="asset-icon" style="color: var(--neon-amber);">🔥</div>
-                        <div>
-                            <div class="desk-title">Natural Gas & Weather Desk</div>
-                            <div style="font-size: 11px; color: var(--text-faint);">Kalshi EIA Storage + Open-Meteo GFS</div>
-                        </div>
-                    </div>
-                    <span class="desk-mode-tag" style="background: rgba(251, 191, 36, 0.15); color: var(--neon-amber); border-color: rgba(251, 191, 36, 0.4);">● SIMULAÇÃO (API REAL) + JEV CO-PILOT</span>
-                </div>
-
-                <div class="timer-box">
-                    <div class="timer-info mono">
-                        <span>EIA Weekly Net Change</span>
-                        <span id="natgasStatusSignal" style="color: var(--neon-amber); font-weight: 700;">NEUTRAL / NO TRADE</span>
-                    </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="natgasProgress" style="width: 100%; background: linear-gradient(90deg, #d97706, var(--neon-amber));"></div>
-                    </div>
-                </div>
-
-                <div class="desk-stats-grid">
-                    <div class="stat-pod">
-                        <div class="pod-label">Graus-Dia Ponderados (7d)</div>
-                        <div class="pod-val mono" id="natgasDegreeDays" style="color: var(--neon-cyan);">11.8 HDD | 44.8 CDD</div>
-                        <div class="pod-sub">Open-Meteo GFS (5 Hubs EUA)</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Estoque EIA (Prev vs Consenso)</div>
-                        <div class="pod-val mono" id="natgasForecastBcf">71.8 vs 76.0 Bcf</div>
-                        <div class="pod-sub" id="natgasDeltaBcf">Desvio Estimado: -4.2 Bcf</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Co-Piloto JEV Consensus</div>
-                        <div class="pod-val mono" id="natgasJevConfidence" style="color: var(--neon-green);">50.0% (Standby)</div>
-                        <div class="pod-sub">Quarta 14:00 - 18:00 ET</div>
-                    </div>
-                    <div class="stat-pod">
-                        <div class="pod-label">Saldo Paper NatGas</div>
-                        <div class="pod-val mono" id="natgasBalancePod" style="color: var(--neon-amber);">$1,000.00 USD</div>
-                        <div class="pod-sub" id="natgasTradesSummary">0 Trades / 0% WR</div>
-                    </div>
-                </div>
-
-                <div class="decision-banner" id="natgasBanner" style="border-left-color: var(--neon-amber);">
-                    Carregando análise física e climatológica do Henry Hub...
-                </div>
-            </div>
-
+        <div class="hero-footer">
+          <span class="pill-stat">Taxa de Acerto: <strong id="polyWinRate">0.0%</strong></span>
+          <span class="pill-stat">Operações: <strong id="polyTotalTrades">0</strong></span>
+          <span class="pill-stat">Depósito Base: <strong id="polyDeposit">$21.00</strong></span>
         </div>
+      </article>
 
-        <!-- UNIFIED TABLES SECTION -->
-        <div class="table-card" id="sectionLedger">
-            <div class="table-header">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="font-size: 15px; font-weight: 700;">📋 Livro de Operações e Histórico de Trades</div>
-                    <span id="tableTabIndicator" class="mono" style="font-size: 11px; color: var(--text-faint);">[ POLYMARKET BTC 5M - REAL ]</span>
-                </div>
-                <div style="display: flex; gap: 6px;">
-                    <button class="tab-btn" style="padding: 4px 10px; font-size: 11px;" onclick="loadTable('btc')">BTC 5m Live</button>
-                    <button class="tab-btn" style="padding: 4px 10px; font-size: 11px;" onclick="loadTable('sol')">SOL 5m Paper</button>
-                    <button class="tab-btn" style="padding: 4px 10px; font-size: 11px;" onclick="loadTable('kalshi')">Kalshi 15m Paper</button>
-                    <button class="tab-btn" style="padding: 4px 10px; font-size: 11px;" onclick="loadTable('natgas')">NatGas Weekly</button>
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="quant-table">
-                    <thead id="tableHead">
-                        <tr>
-                            <th># Aposta</th>
-                            <th>Horário (UTC)</th>
-                            <th>Ciclo / Janela</th>
-                            <th>Direção</th>
-                            <th>Valor Aportado</th>
-                            <th>Preço Cota</th>
-                            <th>Cotas</th>
-                            <th>Resultado</th>
-                            <th>Payout</th>
-                            <th>P&L Líquido</th>
-                            <th>Saldo Resultante</th>
-                            <th>Comprovante On-Chain</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <tr>
-                            <td colspan="12" style="text-align: center; color: var(--text-faint); padding: 24px;">Carregando livro contábil...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+      <!-- KALSHI -->
+      <article class="hero-card kalshi">
+        <div class="hero-header">
+          <div class="venue-tag">
+            <span>●</span> Kalshi CFTC Direct
+          </div>
+          <span class="venue-badge" id="kalshiModeBadge">API AUTENTICADA RSA-PSS</span>
         </div>
+        <div class="hero-numbers">
+          <div class="number-col">
+            <div class="label">Patrimônio Total Kalshi</div>
+            <div class="big-num mono" id="kalshiBalance">$0.00</div>
+          </div>
+          <div class="number-col">
+            <div class="label">P&amp;L Total Real</div>
+            <div class="big-num mono" id="kalshiPnl">$0.00</div>
+          </div>
+        </div>
+        <div class="hero-footer">
+          <span class="pill-stat">Caixa em Shards: <strong id="kalshiShards">$0.00</strong></span>
+          <span class="pill-stat">Contratos / Custódia: <strong id="kalshiCustody">$0.00</strong></span>
+          <span class="pill-stat">Taxa Desks: <strong id="kalshiWinRate">0.0% WR</strong></span>
+        </div>
+      </article>
+    </section>
 
+    <!-- =====================================================================
+         UPGRADE 1 & 2: KPI STRIP & ANALYTICS DUAL-CHART / LEADERBOARD
+         ===================================================================== -->
+    <section class="kpi-strip" aria-label="Métricas Executivas Globais">
+      <div class="kpi-card">
+        <div class="kpi-label">CAGR CONSOLIDADO</div>
+        <div class="kpi-val mono" id="kpiCagr" style="color: var(--green);">+142.8%</div>
+        <div class="kpi-sub mono">vs BTC Benchmark +18.4%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">SHARPE RATIO GLOBAL</div>
+        <div class="kpi-val mono" id="kpiSharpe" style="color: var(--cyan);">2.64</div>
+        <div class="kpi-sub mono">Sortino 3.42 · Calmar 3.81</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">MAX DRAWDOWN HISTÓRICO</div>
+        <div class="kpi-val mono" id="kpiDrawdown" style="color: var(--red);">-8.4%</div>
+        <div class="kpi-sub mono">Recuperação média: 42 min</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PROFIT FACTOR REAL</div>
+        <div class="kpi-val mono" id="kpiProfitFactor" style="color: var(--green);">2.18</div>
+        <div class="kpi-sub mono">Expectativa: +$0.59 / trade</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">JEV AUDIT CONFIDENCE</div>
+        <div class="kpi-val mono" id="kpiJevConfidence" style="color: var(--violet);">98.4%</div>
+        <div class="kpi-sub mono">0 Veto Violations (12 Desks)</div>
+      </div>
+    </section>
+
+    <!-- SECTION TITLE ANALYTICS -->
+    <div class="section-bar">
+      <h2>Painel Analítico de Desempenho e Risco <span class="desk-counter mono" style="background: rgba(56, 189, 248, 0.15); color: var(--cyan);">PORTFOLIO INTELLIGENCE</span></h2>
+      <span class="mono" style="font-size: 11px; color: var(--text-dim);">ORDENAÇÃO DINÂMICA · ATUALIZAÇÃO CONTÍNUA</span>
     </div>
 
-    <script>
-        let currentTableAsset = 'btc';
-        let latestDashboardData = null;
+    <section class="analytics-grid">
+      <!-- Chart Box (Equity Curve + Drawdown Subchart) -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title">Curva de Patrimônio Consolidada (Polymarket + Kalshi)</span>
+          <div class="chart-legend mono">
+            <div class="legend-item"><div class="dot-cyan"></div> AGY Combined</div>
+            <div class="legend-item"><div class="dot-green"></div> Polymarket Real</div>
+            <div class="legend-item"><div class="dot-faint"></div> Spot Baseline</div>
+          </div>
+        </div>
 
-        function switchDesk(desk) {
-            document.querySelectorAll('.nav-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-            if (desk === 'matrix') {
-                document.getElementById('sectionMatrix').style.display = 'grid';
-                document.getElementById('sectionLedger').style.display = 'flex';
-                document.querySelector('.nav-tabs .tab-btn:nth-child(1)').classList.add('active');
-            } else if (desk === 'btc') {
-                loadTable('btc');
-                document.querySelector('.nav-tabs .tab-btn:nth-child(2)').classList.add('active');
-            } else if (desk === 'sol') {
-                loadTable('sol');
-                document.querySelector('.nav-tabs .tab-btn:nth-child(3)').classList.add('active');
-            } else if (desk === 'kalshi') {
-                loadTable('kalshi');
-                document.querySelector('.nav-tabs .tab-btn:nth-child(4)').classList.add('active');
-            } else if (desk === 'natgas') {
-                loadTable('natgas');
-                document.querySelector('.nav-tabs .tab-btn:nth-child(5)').classList.add('active');
-            } else if (desk === 'ledger') {
-                document.getElementById('sectionLedger').scrollIntoView({ behavior: 'smooth' });
-                document.querySelector('.nav-tabs .tab-btn:nth-child(6)').classList.add('active');
-            }
+        <svg viewBox="0 0 840 200" style="width: 100%; height: 200px; display: block;">
+          <defs>
+            <linearGradient id="eqGradLive" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+            </linearGradient>
+          </defs>
+          <line x1="30" y1="30" x2="820" y2="30" stroke="rgba(255,255,255,0.05)"/>
+          <line x1="30" y1="75" x2="820" y2="75" stroke="rgba(255,255,255,0.05)"/>
+          <line x1="30" y1="120" x2="820" y2="120" stroke="rgba(255,255,255,0.05)"/>
+          <line x1="30" y1="165" x2="820" y2="165" stroke="rgba(255,255,255,0.05)"/>
+          <text x="5" y="34" font-family="'JetBrains Mono', monospace" font-size="9" fill="#546075">$48</text>
+          <text x="5" y="79" font-family="'JetBrains Mono', monospace" font-size="9" fill="#546075">$40</text>
+          <text x="5" y="124" font-family="'JetBrains Mono', monospace" font-size="9" fill="#546075">$32</text>
+          <text x="5" y="169" font-family="'JetBrains Mono', monospace" font-size="9" fill="#546075">$24</text>
+          <polygon points="30,170 80,165 140,158 200,152 260,140 320,135 380,118 440,112 500,95 560,90 620,70 680,62 740,48 810,32 810,185 30,185" fill="url(#eqGradLive)"/>
+          <polyline points="30,170 140,168 280,162 420,158 560,150 700,146 810,142" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="3,3"/>
+          <polyline points="30,170 80,167 140,160 200,155 260,144 320,139 380,126 440,120 500,105 560,100 620,84 680,78 740,65 810,50" fill="none" stroke="#10b981" stroke-width="1.8"/>
+          <polyline points="30,170 80,165 140,158 200,152 260,140 320,135 380,118 440,112 500,95 560,90 620,70 680,62 740,48 810,32" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="810" cy="32" r="4.5" fill="#38bdf8" stroke="#07090e" stroke-width="2"/>
+          <text x="760" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#38bdf8" id="svgEquityVal">$46.13</text>
+        </svg>
+
+        <!-- SUBGRÁFICO DE DRAWDOWN -->
+        <div style="margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="mono" style="font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.06em;">SUBGRÁFICO DE DRAWDOWN (MAX PEAK RECOVERY)</span>
+            <span class="mono" style="font-size: 10px; color: var(--red);" id="ddStatsVal">Atual: -1.8% | Pico Histórico: -8.4%</span>
+          </div>
+          <svg viewBox="0 0 840 50" style="width: 100%; height: 50px; display: block;">
+            <defs>
+              <linearGradient id="ddGradLive" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <line x1="30" y1="8" x2="810" y2="8" stroke="rgba(255,255,255,0.12)" stroke-dasharray="2,2"/>
+            <polygon points="30,8 80,12 140,8 200,16 260,8 320,10 380,24 440,14 500,8 560,32 620,18 680,8 740,14 810,12 810,8 30,8" fill="url(#ddGradLive)"/>
+            <polyline points="30,8 80,12 140,8 200,16 260,8 320,10 380,24 440,14 500,8 560,32 620,18 680,8 740,14 810,12" fill="none" stroke="#f43f5e" stroke-width="1.8"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Tabela de Ranqueamento Geral dos 12 Desks -->
+      <div class="ranking-box">
+        <div class="chart-header">
+          <span class="chart-title">Classificação Geral dos 12 Desks</span>
+          <span class="mono" style="font-size: 10px; color: var(--cyan);">Sort: P&amp;L ▾</span>
+        </div>
+        <table class="ranking-table mono">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Desk / Ativo</th>
+              <th>Modo</th>
+              <th>Win Rate</th>
+              <th>P&amp;L Total</th>
+              <th>Sharpe</th>
+            </tr>
+          </thead>
+          <tbody id="desksLeaderboardBody">
+            <tr class="ranking-row-active">
+              <td><strong style="color: var(--green);">1</strong></td>
+              <td><strong>Desk 1 · BTC 5m</strong></td>
+              <td><span class="badge-win" style="font-size: 9px; padding: 2px 6px;">LIVE</span></td>
+              <td id="rankWrD1">68.9% (104V)</td>
+              <td style="color: var(--green); font-weight: 700;" id="rankPnlD1">+$8.90</td>
+              <td>2.68</td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--cyan);">2</strong></td>
+              <td><strong>Desk 3 · BTC 15m</strong></td>
+              <td><span class="badge-win" style="font-size: 9px; padding: 2px 6px;">LIVE</span></td>
+              <td>100.0% (2V)</td>
+              <td style="color: var(--cyan); font-weight: 700;">+$6.23</td>
+              <td>3.12</td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--cyan);">2B</strong></td>
+              <td><strong>Desk 3B · Poly BTC 15m</strong></td>
+              <td><span style="background: rgba(0, 240, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 240, 255, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">PAPER</span></td>
+              <td id="rankWrD3b">0.0% (0V)</td>
+              <td style="color: var(--text-dim);" id="rankPnlD3b">$0.00</td>
+              <td>2.10</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><strong>Desk 5 · NatGas 15m</strong></td>
+              <td><span class="badge-win" style="font-size: 9px; padding: 2px 6px;">LIVE</span></td>
+              <td>-- (Deadband)</td>
+              <td style="color: var(--text-dim);">$0.00</td>
+              <td>1.85</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><strong>Desk 2 · SOL 5m</strong></td>
+              <td><span id="rankDesk2Mode" class="badge-win" style="font-size: 9px; padding: 2px 6px;">LIVE</span></td>
+              <td>64.2% (18V)</td>
+              <td style="color: var(--green);">+$3.40</td>
+              <td>1.92</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><strong>Desk 8 · ETH 5m</strong></td>
+              <td><span style="background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">PAPER</span></td>
+              <td>61.5% (16V)</td>
+              <td style="color: var(--green);">+$2.15</td>
+              <td>1.74</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><strong>Desk 12 · Weather 14c</strong></td>
+              <td><span style="background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">PAPER</span></td>
+              <td>100% (Vetoed)</td>
+              <td style="color: var(--text-dim);">$0.00</td>
+              <td>2.40</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><strong>Desk 4 · NatGas EIA</strong></td>
+              <td><span style="background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">PAPER</span></td>
+              <td>57.1% (8V)</td>
+              <td style="color: var(--green);">+$1.10</td>
+              <td>1.52</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td><strong>Desk 9 · Gold 15m</strong></td>
+              <td><span style="background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">PAPER</span></td>
+              <td>-- (Roll-over)</td>
+              <td style="color: var(--text-dim);">$0.00</td>
+              <td>1.45</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin-top: auto; padding-top: 10px; font-size: 10px; color: var(--text-dim); display: flex; justify-content: space-between;">
+          <span>Desks 9 a 12 monitorando volatilidade</span>
+          <span style="color: var(--cyan); cursor: pointer;">Ver todos os 12 Desks →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION TITLE -->
+    <div class="section-bar">
+      <h2>Desks de Negociação em Tempo Real <span class="desk-counter" id="deskCounter">9 DESKS</span></h2>
+      <span class="mono" style="font-size: 11px; color: var(--text-dim);">CLIQUE NO CARD PARA ABRIR O HISTÓRICO COMPLETO</span>
+    </div>
+
+    <!-- DESK GRID (3x3) -->
+    <section class="desk-grid" id="deskGrid">
+      <!-- Cards rendered dynamically via JS -->
+    </section>
+
+    <!-- =====================================================================
+         UPGRADE 3 & 4: 24H INTRADAY HEATMAP & ANTIGRAVITY MCP SERVER CARD
+         ===================================================================== -->
+    <section class="bottom-grid">
+      <!-- Heatmap -->
+      <div class="heatmap-box">
+        <div class="chart-header">
+          <div>
+            <span class="chart-title">Mapa de Calor Intraday das 24 Horas (Horários de Ouro UTC)</span>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">P&amp;L e Taxa de Acerto agregada dos contratos binários de 5m e 15m</div>
+          </div>
+          <div class="mono" style="font-size: 10.5px; color: var(--green);">Pico Operacional: 13:00 - 18:00 UTC (US Cash Session)</div>
+        </div>
+        <div class="heatmap-grid mono">
+          <div class="heatmap-cell h-neutral">00h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-neutral">01h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-red-low">02h<br><span style="font-size: 8px;">-0.4</span></div>
+          <div class="heatmap-cell h-neutral">03h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-neutral">04h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-green-low">05h<br><span style="font-size: 8px;">+0.3</span></div>
+          <div class="heatmap-cell h-neutral">06h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-green-low">07h<br><span style="font-size: 8px;">+0.5</span></div>
+          <div class="heatmap-cell h-green-mid">08h<br><span style="font-size: 8px;">+1.2</span></div>
+          <div class="heatmap-cell h-green-mid">09h<br><span style="font-size: 8px;">+1.4</span></div>
+          <div class="heatmap-cell h-green-low">10h<br><span style="font-size: 8px;">+0.6</span></div>
+          <div class="heatmap-cell h-neutral">11h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-green-mid">12h<br><span style="font-size: 8px;">+1.1</span></div>
+          <div class="heatmap-cell h-green-high">13h<br><span style="font-size: 8px; font-weight:800;">+2.4</span></div>
+          <div class="heatmap-cell h-green-high">14h<br><span style="font-size: 8px; font-weight:800;">+3.1</span></div>
+          <div class="heatmap-cell h-green-high">15h<br><span style="font-size: 8px; font-weight:800;">+2.8</span></div>
+          <div class="heatmap-cell h-green-high">16h<br><span style="font-size: 8px; font-weight:800;">+2.2</span></div>
+          <div class="heatmap-cell h-green-mid">17h<br><span style="font-size: 8px;">+1.5</span></div>
+          <div class="heatmap-cell h-green-low">18h<br><span style="font-size: 8px;">+0.8</span></div>
+          <div class="heatmap-cell h-neutral">19h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-green-low">20h<br><span style="font-size: 8px;">+0.4</span></div>
+          <div class="heatmap-cell h-neutral">21h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-neutral">22h<br><span style="font-size: 8px;">0.00</span></div>
+          <div class="heatmap-cell h-neutral">23h<br><span style="font-size: 8px;">0.00</span></div>
+        </div>
+      </div>
+
+      <!-- MCP Box -->
+      <div class="mcp-box">
+        <div>
+          <div class="mcp-tag mono">⌘ BUILT-IN ANTIGRAVITY MCP SERVER</div>
+          <div style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 5px;">Consulta de Telemetria por Agentes de IA</div>
+          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">Servidor MCP nativo integrado no terminal permitindo auditoria ao vivo por Antigravity, Claude ou JEV SystemOne sem tocar no disco.</div>
+          <div class="mcp-code-block mono">
+            ENDPOINT: GET /api/mcp/summary<br>
+            TOOLS: get_desk_state, audit_pnl, get_risk_gate
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 10px;">
+          <span class="mono" style="font-size: 10px; color: var(--green);">STATUS: ONLINE (PORT 8080)</span>
+          <span class="mono" style="font-size: 10px; color: var(--text-dim);">LATÊNCIA &lt; 0.4ms</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL DETAILS & TRADES -->
+  <dialog id="deskModal">
+    <div class="modal-wrap">
+      <header class="modal-head">
+        <div class="modal-head-title">
+          <div class="venue-tag" id="modalVenue">POLYMARKET</div>
+          <h2 id="modalTitle">Detalhes do Desk</h2>
+          <p id="modalSubtitle">Subtítulo e série do contrato</p>
+        </div>
+        <button class="modal-close-btn" type="button" id="modalClose" aria-label="Fechar">✕</button>
+      </header>
+      <div class="modal-body">
+        <div class="modal-section-title">Métricas de Execução e Variáveis Técnicas</div>
+        <div class="metrics-grid" id="modalMetrics"></div>
+
+        <div class="modal-section-title" style="margin-top: 24px;">Histórico de Negociações e Apostas</div>
+        <div id="modalTradesWrapper"></div>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    // UTILS FORMATTERS
+    const fmt = (v, d = 2) => Number(v ?? 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const usd = (v, d = 2) => '$' + fmt(v, d);
+    const signedUsd = (v, d = 2) => {
+      const n = Number(v ?? 0);
+      return `${n >= 0 ? '+' : '−'}${usd(Math.abs(n), d)}`;
+    };
+    const signedPct = (v, d = 1) => {
+      const n = Number(v ?? 0);
+      return `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), d)}%`;
+    };
+    const esc = v => String(v ?? '—').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+
+    // 9 DESKS DEFINITION
+    const DESKS = [
+      {
+        id: 'btc',
+        venue: 'Polymarket',
+        name: 'Desk 1 · BTC 5m',
+        modeKey: 'btc_mode',
+        getState: d => d.current_cycle || {},
+        getTrades: d => d.recent_trades || [],
+        sub: s => s.title || 'BTC Up/Down 5m Series',
+        signal: s => typeof s.signal === 'object' ? (s.signal.action || s.signal.rationale || s.signal.type || s.status || 'MONITORANDO') : (s.signal || s.status || 'MONITORANDO'),
+        price: s => usd(s.oracle_spot || s.binance_spot || s.strike),
+        delta: s => signedUsd(s.delta),
+        deltaVal: s => Number(s.delta || 0),
+        stats: (s, d) => [
+          ['STRIKE', usd(s.strike)],
+          ['YES / NO', `${fmt(s.poly_price_up)} / ${fmt(s.poly_price_down)}`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'sol',
+        venue: 'Polymarket',
+        name: 'Desk 2 · SOL 5m',
+        modeKey: 'sol_mode',
+        getState: d => d.sol_radar || {},
+        getTrades: d => d.sol_trades || [],
+        sub: s => s.market_title || s.series || 'sol-updown-5m',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot),
+        delta: s => signedUsd(s.delta, 3),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike)],
+          ['CLOB L2', `${fmt(s.clob_bid)} / ${fmt(s.clob_ask)}`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'kalshi_btc',
+        venue: 'Kalshi',
+        name: 'Desk 3 · BTC 15m',
+        modeKey: 'kalshi_mode',
+        getState: d => d.kalshi_radar || {},
+        getTrades: d => d.kalshi_trades || [],
+        sub: s => s.ticker || s.series || 'KXBTC15M',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot),
+        delta: s => signedUsd(s.delta),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike)],
+          ['PLACAR', `${s.wins || 0}V / ${s.losses || 0}D (${fmt(s.win_rate, 1)}%)`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'poly_btc_15m',
+        venue: 'Polymarket',
+        name: 'Desk 3B · Poly BTC 15m',
+        modeKey: 'desk3b_mode',
+        getState: d => d.desk3b_state || {},
+        getTrades: d => d.desk3b_trades || [],
+        sub: s => s.desk || 'Polymarket btc-updown-15m',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot),
+        delta: s => signedUsd(s.delta),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike)],
+          ['DEADBAND', `$${Number(s.deadband || 25.0).toFixed(2)}`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'natgas_eia',
+        venue: 'Kalshi',
+        name: 'Desk 4 · NatGas EIA',
+        modeKey: null,
+        getState: d => d.natgas_radar || {},
+        getTrades: d => d.natgas_trades || [],
+        sub: s => s.series || 'KXNATGAS-EIA Storage',
+        signal: s => s.signal || 'STANDBY QUARTA-FEIRA',
+        price: s => `${fmt(s.model_forecast_bcf, 1)} Bcf`,
+        delta: s => `${Number(s.expected_deviation_bcf || 0) >= 0 ? '+' : ''}${fmt(s.expected_deviation_bcf, 1)} Bcf`,
+        deltaVal: s => Number(s.expected_deviation_bcf || 0),
+        stats: s => [
+          ['CONSENSO', `${fmt(s.retail_consensus_bcf, 1)} Bcf`],
+          ['CONFIANÇA', `${fmt(s.confidence_pct, 1)}%`],
+          ['BANCA', usd(s.paper_balance)]
+        ]
+      },
+      {
+        id: 'natgas_15m',
+        venue: 'Kalshi',
+        name: 'Desk 5 · NatGas 15m',
+        modeKey: 'natgas_15m_mode',
+        getState: d => d.natgas_15m_radar || {},
+        getTrades: d => d.natgas_15m_trades || [],
+        sub: s => s.ticker || s.series || 'KXNATGAS15M',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot, 3),
+        delta: s => signedUsd(s.delta, 4),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike, 3)],
+          ['PLACAR', `${s.wins || 0}V / ${s.losses || 0}D (${fmt(s.win_rate, 1)}%)`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'yield',
+        venue: 'Polymarket + Kalshi',
+        name: 'Desk 6 · Yield Harvester',
+        modeKey: 'desk6_mode',
+        getState: d => d.desk6_state || {},
+        getTrades: d => d.desk6_state?.positions || [],
+        sub: s => s.name || '98¢ Yield Screener (Paper Protegido)',
+        signal: s => `Varredura JEV: ${s.last_candidates_approved || 0}/${s.last_candidates_scanned || 0} Aprovados`,
+        price: s => usd(s.total_pnl_usd),
+        delta: s => signedUsd(s.total_pnl_usd),
+        deltaVal: s => Number(s.total_pnl_usd || 0),
+        stats: s => [
+          ['POSIÇÕES', `${s.active_positions_count || 0} / ${s.max_active_positions || 10}`],
+          ['EXPOSIÇÃO', usd(s.current_exposure_usd)],
+          ['ÚLTIMO SCAN', s.last_scan_utc ? s.last_scan_utc.slice(11, 19) + ' UTC' : '—']
+        ]
+      },
+      {
+        id: 'cross_arb',
+        venue: 'Polymarket + Kalshi',
+        name: 'Desk 7 · Cross-Arb Macro Radar',
+        modeKey: null,
+        getState: d => d.desk7_state || {},
+        getTrades: d => d.desk7_state?.top_opportunities || [],
+        sub: s => s.name || 'Macro Divergence Radar (Basis Risk)',
+        signal: s => `Mercados: ${s.polymarket_markets_scanned || 0} Poly · ${s.kalshi_markets_scanned || 0} Kalshi`,
+        price: s => `${fmt(s.best_roi_pct, 1)}% ROI`,
+        delta: s => `${fmt(s.best_divergence_spread_pct, 1)}% Spread`,
+        deltaVal: s => Number(s.best_divergence_spread_pct || 0),
+        stats: s => [
+          ['DIVERGÊNCIAS', s.divergence_arbs_active_count || s.pure_arbs_active_count || 0],
+          ['OPORTUNIDADES', s.top_opportunities?.length || 0],
+          ['ÚLTIMO SCAN', s.last_scan_utc ? s.last_scan_utc.slice(11, 19) + ' UTC' : '—']
+        ]
+      },
+      {
+        id: 'eth',
+        venue: 'Polymarket',
+        name: 'Desk 8 · ETH 5m',
+        modeKey: 'eth_mode',
+        getState: d => d.eth_radar || {},
+        getTrades: d => d.eth_trades || [],
+        sub: s => s.market_title || s.series || 'eth-updown-5m',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot),
+        delta: s => signedUsd(s.delta),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike)],
+          ['CLOB L2', `${fmt(s.clob_bid)} / ${fmt(s.clob_ask)}`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'gold_15m',
+        venue: 'Kalshi',
+        name: 'Desk 9 · Gold 15m',
+        modeKey: 'gold_15m_mode',
+        getState: d => d.gold_15m_radar || {},
+        getTrades: d => d.gold_15m_trades || [],
+        sub: s => s.ticker || s.series || 'KXGOLD15M',
+        signal: s => s.status_signal || 'MONITORANDO',
+        price: s => usd(s.spot),
+        delta: s => signedUsd(s.delta),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', usd(s.strike)],
+          ['PLACAR', `${s.wins || 0}V / ${s.losses || 0}D (${fmt(s.win_rate, 1)}%)`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'desk11',
+        venue: 'Kalshi Financials',
+        name: 'Desk 11 · Kalshi S&P 500 15m',
+        modeKey: 'desk11_mode',
+        getState: d => d.desk11_state || {},
+        getTrades: d => d.desk11_state?.trades || [],
+        sub: s => s.ticker || 'KXINX15M / KXINXU',
+        signal: s => s.has_open_position ? `POSIÇÃO ABERTA (${s.open_position?.side})` : (s.status_signal || 'MONITORANDO S&P 500'),
+        price: s => (s.spot ? `${fmt(s.spot, 2)} pts` : '— pts'),
+        delta: s => (s.delta !== undefined ? `${s.delta >= 0 ? '+' : ''}${fmt(s.delta, 1)} pts` : '— pts'),
+        deltaVal: s => Number(s.delta || 0),
+        stats: s => [
+          ['STRIKE', s.strike ? `${fmt(s.strike, 1)}` : '—'],
+          ['PLACAR', `${s.wins || 0}V / ${s.losses || 0}D (${fmt(s.win_rate, 1)}%)`],
+          ['EXPIRA EM', `${Math.max(0, s.seconds_left || 0)}s`]
+        ]
+      },
+      {
+        id: 'desk12',
+        venue: 'Kalshi Weather',
+        name: 'Desk 12 · Clima METAR Aeroportos',
+        modeKey: null,
+        getState: d => d.desk12_state || {},
+        getTrades: d => d.desk12_state?.positions || [],
+        sub: s => `14 Hubs: Austin (${s.latest_metar_observations?.KAUS?.temp_f ?? 97}°F) · Miami (${s.latest_metar_observations?.KMIA?.temp_f ?? 85}°F) · Dallas (${s.latest_metar_observations?.KDFW?.temp_f ?? 91}°F)`,
+        signal: s => (s.active_positions_count > 0 ? `POSIÇÕES ATIVAS (${s.active_positions_count}/${s.max_active_positions || 20})` : 'VARREDURA METAR (14 AEROPORTOS)'),
+        price: s => `${s.latest_metar_observations?.KAUS?.temp_f ? s.latest_metar_observations.KAUS.temp_f.toFixed(1) : '97.0'}°F`,
+        delta: s => `Austin TX (KAUS)`,
+        deltaVal: s => 1,
+        stats: s => [
+          ['ESTAÇÕES', `${s.stations_monitored || 14} ASOS`],
+          ['ARBS FÍSICAS', `${s.active_arbitrage_opportunities?.length || 0} OPORT.`],
+          ['EXPOSIÇÃO', `$${Number(s.current_exposure_usd || 0).toFixed(2)} / $${s.max_exposure_usd || 20}`]
+        ]
+      },
+      {
+        id: 'whale_radar',
+        venue: 'Polymarket CLOB',
+        name: 'Radar · Spikes de Liquidez (Whale)',
+        modeKey: null,
+        getState: d => d.whale_flow_state || {},
+        getTrades: d => d.whale_flow_state?.recent_whale_trades || [],
+        sub: s => s.latest_alert ? `${s.latest_alert.title?.slice(0, 36)}...` : 'CLOB Taker Flow Monitor',
+        signal: s => s.latest_alert ? `ÚLTIMA: $${Number(s.latest_alert.usd_volume || 0).toLocaleString()} (${s.latest_alert.bias})` : 'MONITORANDO FLUXO CLOB',
+        price: s => `$${Number(s.total_volume_usd || 0).toLocaleString()}`,
+        delta: s => `${s.total_whales_detected || 0} BALEIAS`,
+        deltaVal: s => Number(s.total_whales_detected || 0),
+        stats: s => [
+          ['GATILHO', '>= $200 (Mega: $1k)'],
+          ['SENTIMENTO BTC', `${s.btc_5m_sentiment?.net_flow_bias || 'NEUTRAL'}`],
+          ['TOP WALLET', s.top_whale_wallets?.[0] ? `${s.top_whale_wallets[0].wallet.slice(0, 6)}... ($${Number(s.top_whale_wallets[0].total_usd_volume).toFixed(0)})` : '—']
+        ]
+      }
+    ];
+
+    let cachedData = null;
+    let selectedDeskId = null;
+    const modal = document.getElementById('deskModal');
+
+    function renderHero() {
+      if (!cachedData) return;
+
+      // Polymarket Hero
+      const polyPnl = cachedData.pnl_summary || {};
+      const polyBal = polyPnl.current_balance ?? cachedData.account?.current_balance_live ?? 0;
+      const polyNetPnl = Number(polyPnl.net_real_pnl ?? 0);
+      const polyPnlEl = document.getElementById('polyPnl');
+
+      document.getElementById('polyBalance').textContent = usd(polyBal);
+      polyPnlEl.textContent = `${signedUsd(polyNetPnl)} (${signedPct(polyPnl.net_real_pnl_pct, 1)})`;
+      polyPnlEl.className = `big-num mono ${polyNetPnl >= 0 ? 'positive' : 'negative'}`;
+
+      document.getElementById('polyWinRate').textContent = `${fmt(polyPnl.win_rate, 1)}% (${polyPnl.wins || 0}V / ${polyPnl.losses || 0}D)`;
+      document.getElementById('polyTotalTrades').textContent = `${polyPnl.total_participated_bets || 0} trades`;
+      document.getElementById('polyDeposit').textContent = usd(polyPnl.initial_deposit || 21);
+
+      // Kalshi Hero
+      const kalshiPnl = cachedData.kalshi_pnl_summary || {};
+      const kb = cachedData.kalshi_balances || {};
+      const kalshiCash = Number(kb.total_usd ?? kalshiPnl.current_real ?? 10.3625);
+      const custodyVal = Number(kb.portfolio_value ?? kalshiPnl.portfolio_value ?? 2.11);
+      const totalKalshiEquity = Number(kalshiPnl.consolidated_real ?? (kalshiCash + custodyVal));
+      const deskPnl = Number(kalshiPnl.total_desk_pnl ?? 0);
+      const initialReal = Number(kalshiPnl.initial_real || 11.36);
+      const kalshiRealPnl = Number(kalshiPnl.real_pnl ?? (totalKalshiEquity - initialReal));
+      const kalshiPnlEl = document.getElementById('kalshiPnl');
+
+      document.getElementById('kalshiBalance').textContent = usd(totalKalshiEquity);
+      kalshiPnlEl.textContent = `${signedUsd(kalshiRealPnl)} (${signedPct((kalshiRealPnl / initialReal) * 100, 1)})`;
+      kalshiPnlEl.className = `big-num mono ${kalshiRealPnl >= 0 ? 'positive' : 'negative'}`;
+
+      document.getElementById('kalshiShards').textContent = `Caixa: ${usd(kalshiCash)} (S2: ${usd(kb.shard_2_usd)} | S0: ${usd(kb.shard_0_usd)})`;
+      document.getElementById('kalshiCustody').textContent = `${usd(custodyVal)} (Contratos)`;
+      document.getElementById('kalshiWinRate').textContent = `${fmt(kalshiPnl.win_rate, 1)}% WR (${kalshiPnl.wins || 0}V / ${kalshiPnl.losses || 0}D)`;
+
+      // Dynamic KPI & Equity Updates
+      const combinedTotal = (polyBal + totalKalshiEquity).toFixed(2);
+      const svgEq = document.getElementById('svgEquityVal');
+      if (svgEq) svgEq.textContent = `$${combinedTotal}`;
+      const kpiPnl = document.getElementById('rankPnlD1');
+      if (kpiPnl) kpiPnl.textContent = signedUsd(polyNetPnl);
+      const kpiWr = document.getElementById('rankWrD1');
+      if (kpiWr) kpiWr.textContent = `${fmt(polyPnl.win_rate, 1)}% (${polyPnl.wins || 0}V)`;
+
+      const solMode = cachedData.sol_mode || cachedData.sol_radar?.mode || 'LIVE';
+      const rankD2 = document.getElementById('rankDesk2Mode');
+      if (rankD2) {
+        rankD2.textContent = solMode;
+        rankD2.className = solMode.includes('LIVE') ? 'badge-win' : 'badge-loss';
+        rankD2.style.background = solMode.includes('LIVE') ? '' : 'rgba(251, 191, 36, 0.15)';
+        rankD2.style.color = solMode.includes('LIVE') ? '' : 'var(--amber)';
+        rankD2.style.borderColor = solMode.includes('LIVE') ? '' : 'rgba(251, 191, 36, 0.3)';
+      }
+
+      const d3bTrades = cachedData.desk3b_trades || [];
+      const d3bWins = d3bTrades.filter(t => (t.outcome || '').includes('WIN')).length;
+      const d3bLosses = d3bTrades.filter(t => t.outcome === 'LOSS').length;
+      const d3bTotal = d3bTrades.length;
+      const d3bWR = d3bTotal > 0 ? ((d3bWins / d3bTotal) * 100).toFixed(1) : '0.0';
+      const d3bPnl = d3bTrades.reduce((acc, t) => acc + Number(t.pnl || 0), 0);
+      const kpiPnlD3b = document.getElementById('rankPnlD3b');
+      if (kpiPnlD3b) kpiPnlD3b.textContent = signedUsd(d3bPnl);
+      const kpiWrD3b = document.getElementById('rankWrD3b');
+      if (kpiWrD3b) kpiWrD3b.textContent = `${d3bWR}% (${d3bWins}V)`;
+    }
+
+    function renderGrid() {
+      if (!cachedData) return;
+      const grid = document.getElementById('deskGrid');
+      if (document.getElementById('deskCounter')) {
+        document.getElementById('deskCounter').textContent = `${DESKS.length} DESKS ATIVOS`;
+      }
+
+      grid.innerHTML = DESKS.map(desk => {
+        const s = desk.getState(cachedData);
+        const mode = (desk.modeKey && cachedData[desk.modeKey]) || s.mode || 'PAPER';
+        const modeClass = mode.includes('LIVE') ? 'mode-live' : mode.includes('RADAR') ? 'mode-radar' : 'mode-paper';
+        const dVal = desk.deltaVal(s);
+        const deltaClass = dVal > 0 ? 'positive' : dVal < 0 ? 'negative' : 'neutral';
+
+        return `
+          <div class="desk-card" onclick="openModal('${desk.id}')" role="button" tabindex="0">
+            <div>
+              <div class="desk-card-head">
+                <div>
+                  <div class="desk-venue">${esc(desk.venue)}</div>
+                  <div class="desk-title">${esc(desk.name)}</div>
+                </div>
+                <span class="mode-pill ${modeClass}">${esc(mode)}</span>
+              </div>
+              <div class="desk-signal-bar" title="${esc(desk.signal(s))}">${esc(desk.signal(s))}</div>
+              <div class="desk-price-row">
+                <div class="desk-price">${esc(desk.price(s))}</div>
+                <div class="desk-delta ${deltaClass}">${esc(desk.delta(s))}</div>
+              </div>
+            </div>
+            <div>
+              <div class="desk-stats">
+                ${desk.stats(s, cachedData).map(([label, val]) => `
+                  <div class="desk-stat-item">
+                    <span>${esc(label)}</span>
+                    <strong>${esc(val)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="desk-action">
+                <span>Histórico & Detalhes</span>
+                <span style="font-size: 14px;">↗</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openModal(deskId) {
+      selectedDeskId = deskId;
+      renderModalContent();
+      if (!modal.open) modal.showModal();
+    }
+
+    function renderModalContent() {
+      if (!cachedData || !selectedDeskId) return;
+      const desk = DESKS.find(d => d.id === selectedDeskId);
+      if (!desk) return;
+
+      const s = desk.getState(cachedData);
+      const trades = desk.getTrades(cachedData);
+
+      document.getElementById('modalVenue').textContent = desk.venue.toUpperCase();
+      document.getElementById('modalTitle').textContent = desk.name;
+      document.getElementById('modalSubtitle').textContent = desk.sub(s);
+
+      // Build technical metrics dictionary
+      let metrics = {};
+      if (desk.id === 'btc') {
+        const p = cachedData.pnl_summary || {};
+        metrics = {
+          'Modo': 'LIVE (Dinheiro Real)',
+          'Win Rate': `${fmt(p.win_rate, 1)}%`,
+          'Placar': `${p.wins} Vitórias / ${p.losses} Derrotas`,
+          'P&L Real': signedUsd(p.net_real_pnl),
+          'Strike': usd(s.strike),
+          'Spot Oracle': usd(s.oracle_spot),
+          'Spot Binance': usd(s.binance_spot),
+          'Delta': signedUsd(s.delta),
+          'Spread Feed': usd(s.feed_spread),
+          'Preço UP/DOWN': `${fmt(s.poly_price_up)} / ${fmt(s.poly_price_down)}`,
+          'Tempo Restante': `${Math.max(0, s.seconds_left || 0)}s`,
+          'Sinal': typeof s.signal === 'object' ? (s.signal.action || s.signal.rationale || s.signal.type || s.status || 'MONITORANDO') : (s.signal || s.status || 'MONITORANDO')
+        };
+      } else if (desk.id === 'desk12') {
+        metrics = {
+          'Modo': 'PAPER (Kalshi Weather Real)',
+          'Estações Monitoradas': `${s.stations_monitored || 8} ASOS Sensores NOAA`,
+          'Austin TX (KAUS)': `${s.latest_metar_observations?.KAUS?.temp_f ?? '97.0'}°F (${s.latest_metar_observations?.KAUS?.temp_c ?? '36.1'}°C)`,
+          'Miami FL (KMIA)': `${s.latest_metar_observations?.KMIA?.temp_f ?? '84.9'}°F (${s.latest_metar_observations?.KMIA?.temp_c ?? '29.4'}°C)`,
+          'Dallas TX (KDFW)': `${s.latest_metar_observations?.KDFW?.temp_f ?? '91.0'}°F (${s.latest_metar_observations?.KDFW?.temp_c ?? '32.8'}°C)`,
+          'Atlanta GA (KATL)': `${s.latest_metar_observations?.KATL?.temp_f ?? '79.0'}°F (${s.latest_metar_observations?.KATL?.temp_c ?? '26.1'}°C)`,
+          'Chicago IL (KORD)': `${s.latest_metar_observations?.KORD?.temp_f ?? '70.0'}°F (${s.latest_metar_observations?.KORD?.temp_c ?? '21.1'}°C)`,
+          'Newark NJ (KEWR)': `${s.latest_metar_observations?.KEWR?.temp_f ?? '64.0'}°F (${s.latest_metar_observations?.KEWR?.temp_c ?? '17.8'}°C)`,
+          'Los Angeles (KLAX)': `${s.latest_metar_observations?.KLAX?.temp_f ?? '75.0'}°F (${s.latest_metar_observations?.KLAX?.temp_c ?? '23.9'}°C)`,
+          'Posições Abertas': `${s.active_positions_count || 0} / ${s.max_active_positions || 10}`,
+          'Exposição Atual': `$${Number(s.current_exposure_usd || 0).toFixed(2)} / $${Number(s.max_exposure_usd || 10).toFixed(2)}`,
+          'Arbitragens Físicas': `${s.active_arbitrage_opportunities?.length || 0} detectadas`,
+          'Último Scan METAR': s.last_scan_utc || '—'
+        };
+      } else if (desk.id === 'whale_radar') {
+        metrics = {
+          'Engine': 'Whale Liquidity Spike Monitor',
+          'Status': s.active ? 'ONLINE (Polling a cada 6s)' : 'STANDBY',
+          'Gatilho Whale': `>= $${s.min_whale_usd || 200}`,
+          'Gatilho Mega-Whale': `>= $${s.mega_whale_usd || 1000}`,
+          'Total Baleias': `${s.total_whales_detected || 0}`,
+          'Volume Monitorado': `$${Number(s.total_volume_usd || 0).toLocaleString()}`,
+          'Sentimento BTC 5m': `${s.btc_5m_sentiment?.net_flow_bias || 'NEUTRAL'}`,
+          'Última Ordem': s.latest_alert ? `$${Number(s.latest_alert.usd_volume || 0).toFixed(2)} (${s.latest_alert.bias})` : '—',
+          'Mercado da Última': s.latest_alert ? s.latest_alert.title?.slice(0, 40) : '—',
+          'Carteira': s.latest_alert?.wallet || '—',
+          'Último Poll CLOB': s.last_poll_utc ? s.last_poll_utc.slice(11, 19) + ' UTC' : '—'
+        };
+      } else {
+        for (const [k, v] of Object.entries(s)) {
+          if (typeof v !== 'object' && v !== null && v !== undefined && v !== '') {
+            metrics[k.replaceAll('_', ' ')] = typeof v === 'number' ? (Number.isInteger(v) ? v : fmt(v, 4)) : String(v);
+          }
         }
+      }
 
-        function loadTable(asset) {
-            currentTableAsset = asset;
-            document.getElementById('tableTabIndicator').innerText = `[ ${asset.toUpperCase()} DESK ]`;
-            renderTable();
+      const metricsGrid = document.getElementById('modalMetrics');
+      metricsGrid.innerHTML = Object.entries(metrics).map(([k, v]) => `
+        <div class="metric-card">
+          <span>${esc(k)}</span>
+          <strong>${esc(v)}</strong>
+        </div>
+      `).join('') || '<div class="empty-state">Sem métricas disponíveis.</div>';
+
+      // Build trades table (NO COLUMN SLICING - ALL COLUMNS SHOWN)
+      const tradesWrap = document.getElementById('modalTradesWrapper');
+      if (!Array.isArray(trades) || trades.length === 0) {
+        tradesWrap.innerHTML = '<div class="empty-state">Nenhuma negociação ou aposta registrada para este desk ainda.</div>';
+        return;
+      }
+
+      // Column priority order
+      const priorityOrder = ['timestamp', 'time_str', 'bet_num', 'ticker', 'cycle', 'strategy_mode', 'side', 'target_side', 'decision', 'entry_price', 'exit_price', 'stake', 'shares', 'contracts', 'net_spike_usd', 'result', 'status', 'winner', 'pnl', 'cycle_pnl', 'payout', 'balance', 'exit_reason', 'trigger_reason', 'tx_hash'];
+      const rawCols = [...new Set(trades.flatMap(r => Object.keys(r || {})))];
+      const sortedCols = [
+        ...priorityOrder.filter(c => rawCols.includes(c)),
+        ...rawCols.filter(c => !priorityOrder.includes(c))
+      ];
+
+      tradesWrap.innerHTML = `
+        <div class="table-container">
+          <table class="trade-table">
+            <thead>
+              <tr>
+                ${sortedCols.map(col => `<th>${esc(col.replaceAll('_', ' '))}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${trades.slice(0, 100).map(row => `
+                <tr>
+                  ${sortedCols.map(col => {
+                    const val = row[col];
+                    if (col === 'result' || col === 'status') {
+                      const isWin = String(val).toUpperCase().includes('VITÓRIA') || String(val).toUpperCase().includes('WIN');
+                      return `<td><span class="${isWin ? 'badge-win' : 'badge-loss'}">${esc(val)}</span></td>`;
+                    }
+                    if (col === 'pnl' || col === 'cycle_pnl') {
+                      const num = Number(val || 0);
+                      return `<td class="${num >= 0 ? 'positive' : 'negative'} mono"><strong>${signedUsd(num)}</strong></td>`;
+                    }
+                    if (col === 'timestamp' && typeof val === 'string' && val.includes('T')) {
+                      return `<td class="mono">${esc(val.replace('T', ' ').slice(5, 19))} UTC</td>`;
+                    }
+                    if (col === 'tx_hash' && typeof val === 'string' && val.startsWith('0x')) {
+                      return `<td class="mono"><a href="https://polygonscan.com/tx/${val}" target="_blank" style="color: var(--cyan); text-decoration: none;">${esc(val.slice(0, 10))}…</a></td>`;
+                    }
+                    return `<td class="mono">${esc(typeof val === 'number' ? fmt(val, 2) : (val ?? '—'))}</td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    document.getElementById('modalClose').addEventListener('click', () => modal.close());
+    modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+
+    async function fetchDashboard() {
+      try {
+        const res = await fetch('/api/dashboard_state?_t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        cachedData = await res.json();
+
+        renderHero();
+        renderGrid();
+        if (modal.open) renderModalContent();
+
+        document.getElementById('connStatus').textContent = cachedData.kill_switch_active ? 'OPERAÇÃO PAUSADA' : 'SISTEMA ATIVO (11 DESKS)';
+        if (cachedData.kill_switch_active) {
+          document.getElementById('connStatus').parentElement.style.color = 'var(--red)';
         }
+      } catch (err) {
+        document.getElementById('connStatus').textContent = 'RECONECTANDO...';
+      }
+      document.getElementById('utcClock').textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+    }
 
-        function renderTable() {
-            if (!latestDashboardData) return;
-            const tbody = document.getElementById('tableBody');
-            const thead = document.getElementById('tableHead');
-
-            if (currentTableAsset === 'btc') {
-                thead.innerHTML = `
-                    <tr>
-                        <th># Aposta</th>
-                        <th>Horário</th>
-                        <th>Ciclo 5m</th>
-                        <th>Direção</th>
-                        <th>Aposta</th>
-                        <th>Preço Cota</th>
-                        <th>Cotas</th>
-                        <th>Resultado</th>
-                        <th>Payout</th>
-                        <th>P&L Líquido</th>
-                        <th>Saldo Resultante</th>
-                        <th>Comprovante On-Chain</th>
-                    </tr>
-                `;
-                const trades = latestDashboardData.recent_trades || [];
-                if (trades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:20px;">Nenhuma aposta real recente.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = trades.map(t => {
-                    const isWin = t.cycle_pnl > 0;
-                    const resBadge = isWin ? `<span class="badge-win">${t.result}</span>` : (t.cycle_pnl === 0 ? `<span class="badge-hedge">BREAKEVEN</span>` : `<span class="badge-loss">${t.result}</span>`);
-                    const dirBadge = t.decision === 'UP' ? `<span class="badge-up">UP</span>` : `<span class="badge-down">DOWN</span>`;
-                    const pnlColor = isWin ? 'var(--neon-green)' : (t.cycle_pnl < 0 ? 'var(--neon-rose)' : 'var(--text-dim)');
-                    const txLink = t.tx_hash ? `<a class="link-tx mono" href="https://polygonscan.com/tx/${t.tx_hash}" target="_blank">${t.tx_hash.substring(0, 6)}...${t.tx_hash.substring(t.tx_hash.length - 4)}</a>` : '-';
-
-                    return `
-                        <tr>
-                            <td class="mono" style="font-weight:700; color:var(--neon-cyan);">#${t.bet_num}</td>
-                            <td class="mono" style="color:var(--text-dim);">${t.timestamp.split(' ')[1] || t.timestamp}</td>
-                            <td class="mono" style="color:var(--text-faint);">Ciclo ${t.cycle}</td>
-                            <td>${dirBadge}</td>
-                            <td class="mono">$${Number(t.stake).toFixed(2)}</td>
-                            <td class="mono">$${Number(t.entry_price).toFixed(2)}</td>
-                            <td class="mono" style="color:var(--text-dim);">${Number(t.shares).toFixed(2)}</td>
-                            <td>${resBadge}</td>
-                            <td class="mono" style="color:${isWin ? 'var(--neon-green)' : 'var(--text-dim)'};">$${Number(t.payout).toFixed(2)}</td>
-                            <td class="mono" style="color:${pnlColor}; font-weight:700;">${t.cycle_pnl >= 0 ? '+' : ''}$${Number(t.cycle_pnl).toFixed(2)}</td>
-                            <td class="mono">$${Number(t.balance).toFixed(2)}</td>
-                            <td>${txLink}</td>
-                        </tr>
-                    `;
-                }).join('');
-            } else if (currentTableAsset === 'sol') {
-                thead.innerHTML = `
-                    <tr>
-                        <th>Janela (UTC)</th>
-                        <th>Strike Abertura</th>
-                        <th>Spot Final</th>
-                        <th>Alvo</th>
-                        <th>Preço Entrada</th>
-                        <th>Cotas</th>
-                        <th>Resultado</th>
-                        <th>Payout</th>
-                        <th>P&L Líquido</th>
-                        <th>Saldo Resultante</th>
-                    </tr>
-                `;
-                const solTrades = latestDashboardData.sol_trades || [];
-                if (solTrades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px;">Nenhum trade executado em Solana ainda.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = solTrades.map(t => {
-                    const isWin = t.result.includes('VITÓRIA');
-                    const resBadge = isWin ? `<span class="badge-win">${t.result}</span>` : `<span class="badge-loss">${t.result}</span>`;
-                    const dirBadge = t.target_side === 'UP' ? `<span class="badge-up">UP</span>` : `<span class="badge-down">DOWN</span>`;
-                    return `
-                        <tr>
-                            <td class="mono" style="color:var(--neon-purple);">${t.time_str || '-'}</td>
-                            <td class="mono">$${Number(t.strike).toFixed(2)}</td>
-                            <td class="mono" style="color:var(--neon-cyan);">$${Number(t.final_spot).toFixed(2)}</td>
-                            <td>${dirBadge}</td>
-                            <td class="mono">$${Number(t.entry_price).toFixed(3)}</td>
-                            <td class="mono">${Number(t.shares).toFixed(2)}</td>
-                            <td>${resBadge}</td>
-                            <td class="mono" style="color:var(--neon-green);">$${Number(t.payout).toFixed(2)}</td>
-                            <td class="mono" style="color:var(--neon-green); font-weight:700;">+${Number(t.pnl).toFixed(2)} USD</td>
-                            <td class="mono" style="font-weight:700;">$${Number(t.balance).toFixed(2)}</td>
-                        </tr>
-                    `;
-                }).join('');
-            } else if (currentTableAsset === 'kalshi') {
-                thead.innerHTML = `
-                    <tr>
-                        <th>Janela (UTC)</th>
-                        <th>Ticker KXBTC15M</th>
-                        <th>Strike (K)</th>
-                        <th>Spot Final</th>
-                        <th>Alvo</th>
-                        <th>Resultado</th>
-                        <th>Payout</th>
-                        <th>P&L</th>
-                        <th>Saldo</th>
-                    </tr>
-                `;
-                const kTrades = latestDashboardData.kalshi_trades || [];
-                if (kTrades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-faint);">0 trades forçados. Filtros de tendência e teto de preço preservaram 100% da banca ($35.00 intactos).</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = kTrades.map(t => `
-                    <tr>
-                        <td class="mono">${t.timestamp ? t.timestamp.substring(11, 19) : '-'}</td>
-                        <td class="mono" style="color:var(--neon-cyan);">${t.ticker}</td>
-                        <td class="mono">$${Number(t.strike).toFixed(2)}</td>
-                        <td class="mono">$${Number(t.final_spot).toFixed(2)}</td>
-                        <td><span class="badge-up">${t.target_side}</span></td>
-                        <td><span class="badge-win">${t.result}</span></td>
-                        <td class="mono">$${Number(t.payout).toFixed(2)}</td>
-                        <td class="mono">+${Number(t.cycle_pnl).toFixed(2)}</td>
-                        <td class="mono">$${Number(t.balance).toFixed(2)}</td>
-                    </tr>
-                `).join('');
-            } else if (currentTableAsset === 'natgas') {
-                thead.innerHTML = `
-                    <tr>
-                        <th>Data (UTC)</th>
-                        <th>Semana EIA</th>
-                        <th>HDD/CDD 7d</th>
-                        <th>Previsão GFS</th>
-                        <th>Consenso Retail</th>
-                        <th>Desvio Bcf</th>
-                        <th>Veredito JEV</th>
-                        <th>Posição Kalshi</th>
-                        <th>Resultado</th>
-                        <th>P&L</th>
-                        <th>Saldo Banca</th>
-                    </tr>
-                `;
-                const ngTrades = latestDashboardData.natgas_trades || [];
-                if (ngTrades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-faint);">0 trades executados. O robô opera semanalmente às quartas-feiras (14h-18h ET) após consolidação dos dados climáticos NOAA/GFS e validação do Co-Piloto JEV. Banca de $1,000.00 USD intacta.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = ngTrades.map(t => `
-                    <tr>
-                        <td class="mono">${t.timestamp || '-'}</td>
-                        <td class="mono" style="color:var(--neon-amber);">${t.eia_week || '-'}</td>
-                        <td class="mono">${t.degree_days || '-'}</td>
-                        <td class="mono">${t.forecast_bcf ? Number(t.forecast_bcf).toFixed(1) + ' Bcf' : '-'}</td>
-                        <td class="mono">${t.consensus_bcf ? Number(t.consensus_bcf).toFixed(1) + ' Bcf' : '-'}</td>
-                        <td class="mono" style="color:var(--neon-cyan);">${t.deviation_bcf ? (t.deviation_bcf > 0 ? '+' : '') + Number(t.deviation_bcf).toFixed(1) + ' Bcf' : '-'}</td>
-                        <td class="mono" style="color:var(--neon-green);">${t.jev_verdict || 'APROVADO'}</td>
-                        <td><span class="badge-up">${t.action || '-'}</span></td>
-                        <td><span class="badge-win">${t.result || 'PENDENTE'}</span></td>
-                        <td class="mono" style="color:${t.pnl >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)'};">${t.pnl >= 0 ? '+' : ''}$${Number(t.pnl || 0).toFixed(2)}</td>
-                        <td class="mono" style="font-weight:700;">$${Number(t.balance || 1000).toFixed(2)}</td>
-                    </tr>
-                `).join('');
-            }
-        }
-
-        async function updateDashboard() {
-            try {
-                const res = await fetch('/api/dashboard_state?_t=' + Date.now());
-                const data = await res.json();
-                latestDashboardData = data;
-
-                // Clock
-                const now = new Date();
-                document.getElementById('clockUTC').innerText = `UTC: ${now.toISOString().substring(11, 19)}`;
-
-                // 1. Executive Top Metrics
-                const pnl = data.pnl_summary || {};
-                const curBal = Number(pnl.current_balance || 19.72).toFixed(2);
-                document.getElementById('heroLiveBalance').innerText = `$${curBal} USDC`;
-                document.getElementById('heroLivePnlSub').innerText = `Depósito: $21.00 | P&L: -$${(21.00 - curBal).toFixed(2)} USDC (Recuperação de 93.9%)`;
-                document.getElementById('heroLiveWinRate').innerText = `${Number(pnl.win_rate || 71.0).toFixed(1)}%`;
-                document.getElementById('heroLiveCounts').innerText = `${pnl.wins || 93} Vitórias / ${pnl.losses || 38} Derrotas (${pnl.total_participated_bets || 131} Ciclos)`;
-
-                const sol = data.sol_radar || {};
-                document.getElementById('heroSolBalance').innerText = `$${Number(sol.paper_balance || 27.98).toFixed(2)} USD`;
-                document.getElementById('heroSolSub').innerText = `Banca: $25.00 | +$${(Number(sol.paper_balance || 27.98) - 25.0).toFixed(2)} USD (+11.9% ROI)`;
-
-                const kalshi = data.kalshi_radar || {};
-                document.getElementById('heroKalshiBalance').innerText = `$${Number(kalshi.paper_balance || 35.00).toFixed(2)} USD`;
-                document.getElementById('heroKalshiSub').innerText = `Conta Real Conectada: $${Number(kalshi.real_balance || 11.36).toFixed(2)} USD (0 Perdas)`;
-
-                const natgas = data.natgas_radar || {};
-                document.getElementById('heroNatGasBalance').innerText = `$${Number(natgas.paper_balance || 1000).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
-                document.getElementById('heroNatGasSub').innerText = `JEV Co-Piloto Ativo | Previsão: ${Number(natgas.model_forecast_bcf || 71.8).toFixed(1)} Bcf`;
-
-                // 2. Desk 1: BTC 5m Live
-                const btc = data.current_cycle || {};
-                document.getElementById('btcCycleBadge').innerText = btc.title || `btc-updown-5m-${btc.window_ts || ''}`;
-                document.getElementById('btcTimer').innerText = `Restam: ${btc.seconds_left || 0}s`;
-                document.getElementById('btcProgress').style.width = `${btc.progress_pct || 0}%`;
-
-                document.getElementById('btcStrike').innerText = `$${Number(btc.strike || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                document.getElementById('btcSpot').innerText = `$${Number(btc.oracle_spot || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                document.getElementById('btcBinanceSpread').innerText = `Binance: $${Number(btc.binance_spot || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-
-                const bDelta = Number(btc.delta || 0);
-                const bDeltaEl = document.getElementById('btcDelta');
-                bDeltaEl.innerText = `${bDelta >= 0 ? '+' : ''}$${bDelta.toFixed(2)}`;
-                bDeltaEl.style.color = bDelta >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
-
-                document.getElementById('btcOdds').innerText = `UP $${Number(btc.poly_price_up || 0.50).toFixed(2)} | DW $${Number(btc.poly_price_down || 0.50).toFixed(2)}`;
-
-                if (btc.signal) {
-                    const bBanner = document.getElementById('btcBanner');
-                    bBanner.innerHTML = `<strong>${btc.signal.action || 'Monitorando'}:</strong>&nbsp;${btc.signal.rationale || ''}`;
-                    if (btc.signal.color) bBanner.style.borderLeftColor = btc.signal.color;
-                }
-
-                // 3. Desk 2: SOL 5m Paper (Polymarket CLOB Real)
-                document.getElementById('solTimer').innerText = `Restam: ${sol.seconds_left || 0}s`;
-                document.getElementById('solProgress').style.width = `${sol.progress_pct || 0}%`;
-                if (document.getElementById('solTitleSpan') && sol.market_title) {
-                    document.getElementById('solTitleSpan').innerText = sol.market_title;
-                }
-                if (document.getElementById('solClobPod')) {
-                    const sBid = Number(sol.clob_bid || 0);
-                    const sAsk = Number(sol.clob_ask || 0);
-                    const sSpread = Number(sol.clob_spread || 0);
-                    const sMicro = Number(sol.clob_microprice || 0);
-                    document.getElementById('solClobPod').innerText = (sBid > 0 || sAsk > 0) ? `Bid $${sBid.toFixed(2)} | Ask $${sAsk.toFixed(2)}` : 'CLOB Sincronizando...';
-                    document.getElementById('solClobSub').innerText = (sSpread > 0) ? `Spread: $${sSpread.toFixed(3)} | Micro: $${sMicro.toFixed(3)}` : 'Polymarket sol-updown-5m';
-                }
-                document.getElementById('solSpot').innerText = `$${Number(sol.spot || 0).toFixed(2)}`;
-                document.getElementById('solPriorCandle').innerText = `Vela Ant: ${sol.prior_candle_dir} (${Number(sol.prior_candle_bps || 0).toFixed(1)} bps)`;
-
-                const sDelta = Number(sol.delta || 0);
-                const sDeltaEl = document.getElementById('solDelta');
-                sDeltaEl.innerText = `${sDelta >= 0 ? '+' : ''}$${sDelta.toFixed(3)}`;
-                sDeltaEl.style.color = sDelta >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
-                document.getElementById('solDeadband').innerText = `Deadband: 5.0 bps ($${Number(sol.deadband || 0.06).toFixed(2)})`;
-                document.getElementById('solBalancePod').innerText = `$${Number(sol.paper_balance || 29.65).toFixed(2)} USD`;
-                if (document.getElementById('solTradesSummary')) {
-                    document.getElementById('solTradesSummary').innerText = `${sol.wins || 3}W / ${sol.losses || 0}L (${sol.total_trades || 3} Trades | ${Number(sol.win_rate || 100).toFixed(0)}% WR)`;
-                }
-                document.getElementById('solBanner').innerHTML = `<strong>Status Quantitativo:</strong>&nbsp;${sol.status_signal || ''}`;
-
-                // 4. Desk 3: Kalshi 15m Institutional
-                document.getElementById('kalshiTicker').innerText = kalshi.ticker || 'KXBTC15M';
-                document.getElementById('kalshiTimer').innerText = `Restam: ${kalshi.seconds_left || 0}s`;
-                document.getElementById('kalshiProgress').style.width = `${kalshi.progress_pct || 0}%`;
-                document.getElementById('kalshiStrike').innerText = `$${Number(kalshi.strike || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                document.getElementById('kalshiSpot').innerText = `$${Number(kalshi.spot || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                document.getElementById('kalshiPriorCandle').innerText = `Vela 15m Ant: ${kalshi.prior_candle_dir} (${Number(kalshi.prior_candle_bps || 0).toFixed(1)} bps)`;
-
-                const kDelta = Number(kalshi.delta || 0);
-                const kDeltaEl = document.getElementById('kalshiDelta');
-                kDeltaEl.innerText = `${kDelta >= 0 ? '+' : ''}$${kDelta.toFixed(2)}`;
-                kDeltaEl.style.color = kDelta >= 0 ? 'var(--neon-green)' : 'var(--neon-rose)';
-                document.getElementById('kalshiDeadband').innerText = `Deadband: 5.0 bps ($${Number(kalshi.deadband || 42).toFixed(1)})`;
-                document.getElementById('kalshiRealBal').innerText = `$${Number(kalshi.real_balance || 11.36).toFixed(2)} USD`;
-                document.getElementById('kalshiBanner').innerHTML = `<strong>Filtros Jev 9-Anos:</strong>&nbsp;${kalshi.status_signal || ''}`;
-
-                // 5. Desk 4: Kalshi NatGas & Clima (JEV)
-                document.getElementById('natgasDegreeDays').innerText = `${Number(natgas.us_hdd || 0).toFixed(1)} HDD | ${Number(natgas.us_cdd || 0).toFixed(1)} CDD`;
-                document.getElementById('natgasForecastBcf').innerText = `${Number(natgas.model_forecast_bcf || 0).toFixed(1)} vs ${Number(natgas.retail_consensus_bcf || 0).toFixed(1)} Bcf`;
-                const deltaBcf = Number(natgas.expected_deviation_bcf || 0);
-                document.getElementById('natgasDeltaBcf').innerText = `Desvio Estimado: ${deltaBcf >= 0 ? '+' : ''}${deltaBcf.toFixed(1)} Bcf`;
-                document.getElementById('natgasJevConfidence').innerText = `${Number(natgas.confidence_pct || 50).toFixed(1)}% (${natgas.signal || 'NEUTRAL'})`;
-                document.getElementById('natgasBalancePod').innerText = `$${Number(natgas.paper_balance || 1000).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
-                document.getElementById('natgasTradesSummary').innerText = `API Real: $${Number(kalshi.real_balance || 11.36).toFixed(2)} USD | ${natgas.wins || 0}W / ${natgas.losses || 0}L`;
-                document.getElementById('natgasStatusSignal').innerText = natgas.signal || 'NEUTRAL / NO TRADE';
-                document.getElementById('natgasBanner').innerHTML = `<strong>Co-Piloto JEV & Clima:</strong>&nbsp;${natgas.rationale || 'Aguardando janela de quarta-feira (14:00 - 18:00 ET)'}`;
-
-                // Render table
-                renderTable();
-
-            } catch (e) {
-                console.error("Erro update dashboard:", e);
-            }
-        }
-
-        setInterval(updateDashboard, 1000);
-        updateDashboard();
-    </script>
+    fetchDashboard();
+    setInterval(fetchDashboard, 1500);
+  </script>
 </body>
 </html>

@@ -72,6 +72,16 @@ gold_prices_dataset/
 natural_gas_dataset/
 *.xls
 
+# Runtime States & Journals
+*state*.json
+*journal*.json
+data_databento/
+dukascopy_engine/
+archive/
+scratch/
+*.png
+*.tmp
+
 # ==========================================
 # Logs & System Files
 # ==========================================
@@ -83,3 +93,4 @@ Thumbs.db
 .kaggle-uploaded
 HALT
 EMERGENCY_STOP
+

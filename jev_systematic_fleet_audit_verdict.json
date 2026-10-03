@@ -1,0 +1,42 @@
+{
+  "timestamp": 1790839807.3897824,
+  "elapsed_sec": 0.31,
+  "answers": {
+    "dilemma1_systematic_kalshi_15m_refactor": {
+      "choice": "APPLY_3_LAYER_DISCOVERY_SYSTEMATICALLY",
+      "confidence": 0.96,
+      "probabilities": {
+        "APPLY_ONLY_TO_GOLD": 0.02,
+        "MAINTAIN_CURRENT_WAIT_FOR_MARKET_OPEN": 0.01,
+        "APPLY_3_LAYER_DISCOVERY_SYSTEMATICALLY": 0.97
+      }
+    },
+    "dilemma2_floor_strike_none_trap": {
+      "choice": "REQUIRE_ACTIVE_STATUS_AND_VALID_STRIKE",
+      "confidence": 1.0,
+      "probabilities": {
+        "REQUIRE_ACTIVE_STATUS_AND_VALID_STRIKE": 1.0,
+        "USE_PREVIOUS_CANDLE_CLOSE_AS_STRIKE": 0.0,
+        "IGNORE_STRIKE_TRADE_ON_CVD_ONLY": 0.0
+      }
+    },
+    "dilemma3_desk8_eth_indentation_fix": {
+      "choice": "FIX_INDENTATION_NEST_INSIDE_SPREAD_GATE",
+      "confidence": 1.0,
+      "probabilities": {
+        "DISABLE_DESK8": 0.0,
+        "LEAVE_AS_IS": 0.0,
+        "FIX_INDENTATION_NEST_INSIDE_SPREAD_GATE": 1.0
+      }
+    },
+    "dilemma4_global_prioritization": {
+      "choice": "CORRECT_ALL_AFFECTED_DESKS_SYSTEMATICALLY",
+      "confidence": 1.0,
+      "probabilities": {
+        "FIX_ONLY_PAPER_DESKS": 0.0,
+        "POSTPONE_CHANGES": 0.0,
+        "CORRECT_ALL_AFFECTED_DESKS_SYSTEMATICALLY": 1.0
+      }
+    }
+  }
+}

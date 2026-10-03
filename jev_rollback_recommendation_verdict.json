@@ -1,0 +1,25 @@
+{
+  "timestamp": 1790634110.0719166,
+  "elapsed_sec": 0.38,
+  "results": {
+    "recommend_any_rollback": {
+      "choice": "partial_rollback_or_trim",
+      "confidence": 0.25,
+      "probabilities": {
+        "no_rollback_recommended": 0.5,
+        "partial_rollback_or_trim": 0.5,
+        "urgent_full_rollback": 0.0
+      }
+    },
+    "component_to_watch_most": {
+      "choice": "monitor_system_load",
+      "confidence": 0.68,
+      "probabilities": {
+        "desk12_basis_risk_tuning": 0.18,
+        "keep_running_as_is": 0.01,
+        "monitor_system_load": 0.76,
+        "tighten_whale_radar_coupling": 0.05
+      }
+    }
+  }
+}

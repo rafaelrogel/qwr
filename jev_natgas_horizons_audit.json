@@ -1,0 +1,47 @@
+{
+  "validation_eia_thursday": {
+    "verdict": "MODERATE_EDGE",
+    "confidence": 0.22,
+    "probabilities": {
+      "INVALID_NO_EDGE": 0.24,
+      "STRONGLY_VALIDATED_HIGH_ALPHA": 0.29,
+      "MODERATE_EDGE": 0.47
+    }
+  },
+  "validation_daily_kxnatgasd": {
+    "verdict": "VIABLE_WITH_STRICT_STOP_LOSS",
+    "confidence": 0.38,
+    "probabilities": {
+      "VALIDATED_EXCELLENT_TURNOVER": 0.3,
+      "VIABLE_WITH_STRICT_STOP_LOSS": 0.59,
+      "REJECTED_TOO_VOLATILE": 0.11
+    }
+  },
+  "validation_weekly_kxnatgasw": {
+    "verdict": "VALIDATED_POST_EIA_ONLY",
+    "confidence": 0.96,
+    "probabilities": {
+      "VALIDATED_POST_EIA_ONLY": 0.97,
+      "AVOID_WEEKLY_ENTIRELY": 0.01,
+      "ENTER_EARLY_WEEK": 0.02
+    }
+  },
+  "validation_monthly_kxnatgasmon": {
+    "verdict": "VALIDATED_DISCARD_MONTHLY",
+    "confidence": 0.99,
+    "probabilities": {
+      "VALIDATED_DISCARD_MONTHLY": 0.99,
+      "INDIFFERENT": 0.01,
+      "RECOMMEND_MONTHLY": 0.0
+    }
+  },
+  "comparative_ranking_order": {
+    "verdict": "RANKING_15M_AND_EIA_FIRST_THEN_DAILY",
+    "confidence": 0.99,
+    "probabilities": {
+      "RANKING_15M_AND_EIA_FIRST_THEN_DAILY": 1.0,
+      "RANKING_MONTHLY_FIRST": 0.0,
+      "RANKING_ALL_EQUAL": 0.0
+    }
+  }
+}

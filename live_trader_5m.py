@@ -31,7 +31,26 @@ import urllib.request
 import threading
 import queue
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
+import math
+from risk_gate import (
+    is_system_halted,
+    atomic_write_json,
+    check_pre_trade_gate,
+    validate_executable_edge_gate,
+    compute_dynamic_stake,
+    get_dynamic_deadband_gate,
+    check_order_flow_imbalance_gate,
+    check_altcoin_market_breadth_gate,
+    validate_clob_spread_gate
+)
+from execution_math import (
+    calculate_vwap_ask,
+    calculate_vwap_bid,
+    calculate_executable_edge,
+    compute_fractional_kelly_stake,
+    bayesian_fair_value
+)
 
 from py_clob_client_v2 import (
     ClobClient,
@@ -44,6 +63,7 @@ from py_clob_client_v2 import (
 from binance_liquidation_watcher import get_liquidation_watcher
 from binance_cvd_watcher import get_cvd_watcher
 from py_clob_client_v2.order_builder.builder import ROUNDING_CONFIG
+from anti_sweep_shield import evaluate_anti_sweep_shield
 
 # Patch de precisao do py_clob_client_v2:
 # O CLOB da Polymarket aceita no maximo 4 casas decimais no takerAmount para market buy orders.
@@ -59,12 +79,12 @@ JOURNAL_JSON = os.path.join(BASE_DIR, "live_trading_journal.json")
 
 # Configuracoes de Risco e Estrategia Quantitativa (Modo Sniper Purista - Holdout WR 74.4%)
 FIXED_STAKE = 1.00        # $1.00 USDC por aposta primaria
-PRIMARY_MIN_PRICE = 0.35  # Preco minimo de cota primaria (evita penny traps)
+PRIMARY_MIN_PRICE = 0.40  # Preco minimo de cota primaria (JEV: elimina cotas de cauda com spread punitivo na CLOB)
 PRIMARY_MAX_PRICE = 0.55  # Preco maximo de cota primaria (Audit Jev: teto estrito <= 0.55 elimina trades de baixo retorno e eleva EV para +$0.421)
 DEADBAND_BPS = 0.00021    # 2.1 bps (0.021%) do Strike (Deadband dinâmico e scale-invariant independente do preço do BTC)
 DEADBAND_MIN_FLOOR = 15.0 # Piso mínimo absoluto em USD para evitar micro-ruído
 HEDGE_STAKE = 1.00        # $1.00 USDC para hedge dinamico estilo Bonereaper (min size Polymarket CLOB)
-HEDGE_DELTA_THRESHOLD = 8.0  # Reversao de $8 no Chainlink aciona protecao antecipada de hedge
+HEDGE_DELTA_THRESHOLD = 18.0  # Reversao expressiva no Chainlink aciona protecao antecipada (evita micro-ruido de repique)
 HEDGE_MAX_PRICE = 0.45     # Preco maximo permitido para hedge (<= $0.45 garante retorno positivo se hedged)
 STOP_LOSS_MIN_BID = 0.15   # Preco minimo de bid para liquidar posicao perdedora antecipadamente (Stop-Loss)
 TAKE_PROFIT_PRICE_THRESHOLD = 0.86 # Add-on 1 (SirMartingale): Venda antecipada se cotacao bater $0.86+ (lucro ~80%)
@@ -76,6 +96,7 @@ MAX_LOSS_LIMIT = -5.00    # Stop loss diario (-$5.00 USDC)
 TAKE_PROFIT_LIMIT = 50.00 # Take profit aumentado para +$50.00 USDC
 DRAWDOWN_FLOOR_USDC = 15.00 # Piso absoluto de preservacao de capital ($15.00 USDC)
 MAX_SESSION_DRAWDOWN = 4.00 # Perda maxima permitida na sessao ($4.00 USDC)
+MAX_ORACLE_STRIKE_DISCREPANCY_USD = 55.0 # Teto maximo de discrepancia Binance vs Chainlink na abertura (~6.5 bps / JEV 86%)
 
 def load_env_config() -> Dict[str, str]:
     """Carrega variaveis do arquivo .env"""
@@ -111,16 +132,8 @@ def get_shared_wallet_sol_impact() -> float:
         return 0.0
 
 def _atomic_json_write(path: str, data: dict):
-    """Grava JSON de forma atomica usando arquivo temporario para evitar corrupcao em caso de queda"""
-    tmp_path = path + ".tmp"
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-    except Exception as e:
-        print(f"[Erro na gravacao atomica do JSON {path}]: {e}")
+    """Grava JSON de forma atomica usando modulo central risk_gate"""
+    return atomic_write_json(path, data)
 
 def _acquire_instance_lock(lock_path: str):
     """Garante que apenas uma instancia do bot esteja rodando por vez"""
@@ -306,7 +319,9 @@ def get_clob_orderbook(token_id: str) -> Optional[Dict[str, Any]]:
                 "sum_ask_size": round(sum_ask_size, 2),
                 "top_imbalance": round(top_imbalance, 4),
                 "depth_imbalance": round(depth_imbalance, 4),
-                "microprice": round(microprice, 4)
+                "microprice": round(microprice, 4),
+                "bids_raw": bids,
+                "asks_raw": asks
             }
     except Exception as e:
         print(f"    [Erro ao consultar Order Book CLOB]: {e}")
@@ -314,7 +329,104 @@ def get_clob_orderbook(token_id: str) -> Optional[Dict[str, Any]]:
 
 # [NOTA DE ARQUITETURA]: Módulos Streak Snapper e Reversão Markoviana DDD foram aposentados
 # após a Auditoria Quantitativa dos Últimos 5 Anos demonstrar WR destrutivo de 37.2%.
-# O engine opera exclusivamente no Drift Direcional Confirmado aos 135s (WR 76.5%, P&L +$25.295).
+class CandleTWAPTracker:
+    """
+    Rastreador de Média Ponderada pelo Tempo (TWAP) para velas de 5 minutos (300 segundos).
+    Espelha fielmente a regra oficial de liquidação da Polymarket/Chainlink:
+    'TWAP of the time range specified is greater than or equal to the price at the beginning of that range'.
+    """
+    def __init__(self, window_ts: int, strike: float, symbol: str = "BTCUSDT"):
+        self.window_ts = window_ts
+        self.strike = strike
+        self.symbol = symbol
+        self.samples: List[Tuple[float, float]] = []  # Lista de (t_relativo_sec, preco)
+        self._backfilled = False
+        # Adiciona o strike oficial no segundo 0
+        if strike and strike > 0:
+            self.samples.append((0.0, strike))
+
+    def backfill_from_binance(self, current_ts: float):
+        """Preenche o histórico de preços caso o bot tenha iniciado a vela com atraso."""
+        if self._backfilled:
+            return
+        elapsed = int(current_ts - self.window_ts)
+        if elapsed <= 5:
+            self._backfilled = True
+            return
+
+        try:
+            start_ms = self.window_ts * 1000
+            end_ms = int(current_ts * 1000)
+            url = f"https://api.binance.com/api/v3/klines?symbol={self.symbol}&interval=1m&startTime={start_ms}&endTime={end_ms}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3.0) as r:
+                klines = json.loads(r.read().decode())
+                for k in klines:
+                    k_start = (k[0] / 1000.0) - self.window_ts
+                    o, h, l, c = float(k[1]), float(k[2]), float(k[3]), float(k[4])
+                    typ = (o + h + l + c) / 4.0
+                    for offset in [0.0, 15.0, 30.0, 45.0]:
+                        t_sec = k_start + offset
+                        if 0.0 <= t_sec <= elapsed:
+                            self.samples.append((t_sec, typ))
+            self.samples.sort(key=lambda x: x[0])
+            self._backfilled = True
+        except Exception:
+            self._backfilled = True
+
+    def add_sample(self, price: float, current_ts: Optional[float] = None):
+        """Registra uma cotação instantânea no tempo relativo da vela."""
+        if not price or price <= 0:
+            return
+        ts = current_ts if current_ts is not None else time.time()
+        t_rel = max(0.0, min(300.0, ts - self.window_ts))
+        self.samples.append((t_rel, price))
+
+    def get_current_twap(self) -> float:
+        """Calcula o TWAP acumulado até o momento via integração trapezoidal ponderada."""
+        if not self.samples:
+            return self.strike
+        if len(self.samples) == 1:
+            return self.samples[0][1]
+
+        sorted_samples = sorted(self.samples, key=lambda x: x[0])
+        total_time = 0.0
+        weighted_sum = 0.0
+
+        for i in range(len(sorted_samples) - 1):
+            t1, p1 = sorted_samples[i]
+            t2, p2 = sorted_samples[i+1]
+            dt = max(0.001, t2 - t1)
+            avg_p = (p1 + p2) / 2.0
+            weighted_sum += avg_p * dt
+            total_time += dt
+
+        if total_time <= 0:
+            return sorted_samples[-1][1]
+
+        return weighted_sum / total_time
+
+    def get_twap_delta(self) -> float:
+        """Retorna a diferença entre o TWAP atual e o Strike (K)."""
+        return self.get_current_twap() - self.strike
+
+    def get_required_spot_to_win(self, target_side: str, at_elapsed_sec: float) -> Optional[float]:
+        """
+        Calcula o preço spot médio necessário nos segundos restantes (até 300s)
+        para que a média TWAP final termine vencedora no oráculo.
+        """
+        cur_twap = self.get_current_twap()
+        t = max(1.0, min(295.0, at_elapsed_sec))
+        remaining = 300.0 - t
+        if remaining <= 3.0:
+            return None
+
+        # Condição de vitória no TWAP final de 300s:
+        # Para UP: TWAP >= strike -> (t * cur_twap + remaining * req_spot) / 300 >= strike
+        # req_spot = (300 * strike - t * cur_twap) / remaining
+        req_spot = (300.0 * self.strike - t * cur_twap) / remaining
+        return req_spot
+
 
 def get_polymarket_resolution(window_ts: int, max_retries: int = 15) -> Optional[str]:
     """
@@ -370,6 +482,7 @@ class LiveTrader:
         self.session_losses = 0
         self.cumulative_cycle_pnl = 0.0
         self.pending_unredeemed_payouts = 0.0
+        self.session_pending_unredeemed = 0.0
 
         self.total_spent = 0.0
         self.total_pnl = 0.0
@@ -495,6 +608,17 @@ class LiveTrader:
             else:
                 self.session_initial_balance = bal
             self.current_balance = bal
+            if bal > 0 and os.path.exists(self.journal_json):
+                try:
+                    with open(self.journal_json, "r", encoding="utf-8") as f:
+                        jdata = json.load(f)
+                    jdata["current_balance"] = round(bal, 4)
+                    jdata["total_pnl_vs_deposit"] = round(bal - self.initial_deposit, 2)
+                    jdata["session_pnl"] = round(bal - self.session_initial_balance, 2)
+                    jdata["last_updated"] = datetime.now().isoformat()
+                    _atomic_json_write(self.journal_json, jdata)
+                except Exception:
+                    pass
             print(f"   -> Saldo Real em Carteira: ${bal:.2f} USDC (Base de Risco Inicial da Sessao: ${self.session_initial_balance:.2f})")
         except Exception as e:
             print(f"[ERRO ao autenticar ClobClient]: {e}")
@@ -726,6 +850,33 @@ class LiveTrader:
         except Exception as e:
             return 0.0
 
+    def get_latest_clob_fill(self, token_id: str, side: str = "SELL", min_timestamp: Optional[int] = None) -> Optional[dict]:
+        """Obtém o fill mais recente na CLOB filtrado estritamente por token, lado e timestamp"""
+        if not self.client or not token_id:
+            return None
+        try:
+            trades = self.client.get_trades()
+            if not trades:
+                return None
+            sorted_trades = sorted(trades, key=lambda x: int(x.get("match_time", 0)), reverse=True)
+            for tr in sorted_trades:
+                if tr.get("side") != side:
+                    continue
+                if str(tr.get("asset_id", "")) != str(token_id):
+                    continue
+                m_time = int(tr.get("match_time", 0))
+                if min_timestamp and m_time < (min_timestamp - 30):
+                    continue
+                return {
+                    "price": float(tr.get("price", 0.0)),
+                    "size": float(tr.get("size", 0.0)),
+                    "tx_hash": tr.get("transaction_hash", ""),
+                    "match_time": m_time
+                }
+        except Exception as e:
+            print(f"[get_latest_clob_fill erro]: {e}")
+        return None
+
     def _is_past_deadline(self, window_ts: int, max_elapsed: int = 295) -> bool:
         """Retorna True se a janela estiver muito proxima do fim (evita ordens pos-fechamento)"""
         return (time.time() - window_ts) >= max_elapsed
@@ -755,8 +906,14 @@ class LiveTrader:
                 if sl_res and sl_res.get("status") == "SUCCESS":
                     sl_confirmed = True
                     if self.execution_mode != "paper":
-                        time.sleep(1.0)
+                        time.sleep(2.0)
                         rem_tok = self.get_token_balance(target_token)
+                        if rem_tok >= sell_shares:
+                            # Consulta se houve trade recente de SELL antes de assumir FAK não preenchido
+                            fill_check = self.get_latest_clob_fill(target_token, side="SELL", min_timestamp=window_ts)
+                            if fill_check and fill_check["size"] > 0:
+                                print("       -> [CLOB CONFIRMADO]: Venda de stop-loss confirmada via histórico de trades da CLOB!")
+                                rem_tok = 0.0
                         if rem_tok >= sell_shares:
                             print(f"       [ALERTA STOP-LOSS] Ordem aceita pela API mas cotas continuam na carteira ({rem_tok:.2f} cotas). FAK não preenchido.")
                             sl_confirmed = False
@@ -765,13 +922,21 @@ class LiveTrader:
                         s_resp = sl_res.get("response", {})
                         s_hashes = s_resp.get("transactionsHashes") or []
                         early_tx = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
-                        early_payout = round(sell_shares * best_bid_primary, 2)
+                        resp_price = s_resp.get("price")
+                        actual_price = resp_price if (resp_price is not None and resp_price > 0) else best_bid_primary
+                        actual_tx = early_tx
+                        if self.execution_mode != "paper" and self.client:
+                            fill = self.get_latest_clob_fill(target_token, side="SELL", min_timestamp=window_ts)
+                            if fill:
+                                actual_price = fill["price"]
+                                actual_tx = fill["tx_hash"] or actual_tx
+                        early_payout = round(sell_shares * actual_price, 2)
                         print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_tx}")
-                        print(f"       -> Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
+                        print(f"       -> Preço Real de Venda: ${actual_price:.2f} | Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
                         return {
                             "success": True,
                             "tx_hash": early_tx,
-                            "price": best_bid_primary,
+                            "price": actual_price,
                             "payout": early_payout,
                             "shares": sell_shares
                         }
@@ -785,6 +950,11 @@ class LiveTrader:
 
     def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None, max_price: Optional[float] = None) -> Dict[str, Any]:
         """Cria e envia ordem a mercado real para o Polymarket CLOB V2 (BUY em USDC, SELL em cotas)"""
+        halted, halt_msg = is_system_halted()
+        if halted:
+            print(f"\n[🛑 RISK GATE VETO]: Ordem LIVE bloqueada: {halt_msg}")
+            return {"status": "ERROR", "error": f"VETO_KILL_SWITCH: {halt_msg}"}
+
         if self.execution_mode == "paper":
             mock_id = f"paper-{int(time.time()*1000)}"
             mock_tx = f"0xpaper{int(time.time()*1000):016x}"
@@ -815,6 +985,46 @@ class LiveTrader:
             return {"status": "SUCCESS", "response": resp}
         except Exception as e:
             err_str = str(e)
+            # Reconciliação Anti-Trade Fantasma:
+            # Em caso de timeout de rede (ex: 'The read operation timed out'), a API pode ter executado a ordem.
+            if side == "BUY":
+                try:
+                    time.sleep(1.5)
+                    tok_bal = self.get_token_balance(token_id)
+                    if tok_bal and tok_bal >= 0.5:
+                        print(f"       [🚨 RECUPERAÇÃO ANTI-FANTASMA]: Timeout de rede ocorreu, mas {tok_bal:.4f} cotas foram confirmadas na Safe!")
+                        return {
+                            "status": "SUCCESS",
+                            "response": {
+                                "orderID": "RECONCILED_ONCHAIN",
+                                "transactionsHashes": [],
+                                "reconciled": True
+                            }
+                        }
+                except Exception:
+                    pass
+            elif side == "SELL":
+                try:
+                    time.sleep(1.5)
+                    tok_bal = self.get_token_balance(token_id)
+                    if tok_bal is not None and tok_bal < 0.1:
+                        actual_price = price or 0.0
+                        fill = self.get_latest_clob_fill(token_id, side="SELL")
+                        if fill:
+                            actual_price = fill["price"]
+                            actual_tx = fill["tx_hash"] or actual_tx
+                        print(f"       [🚨 RECUPERAÇÃO ANTI-FANTASMA]: Venda confirmada via CLOB (cotas zeradas)! Preço Real: ${actual_price:.2f} | Tx: {actual_tx}")
+                        return {
+                            "status": "SUCCESS",
+                            "response": {
+                                "orderID": actual_tx,
+                                "transactionsHashes": [actual_tx],
+                                "reconciled": True,
+                                "price": actual_price
+                            }
+                        }
+                except Exception:
+                    pass
             return {"status": "FAILED", "error": err_str}
 
     def run_trading_cycle(self):
@@ -922,14 +1132,24 @@ class LiveTrader:
         feed_diff = binance_spot - strike if strike else 0.0
         print(f"    Strike Oraculo Chainlink (K): ${strike:,.2f} | Binance Ref: ${binance_spot:,.2f} (Spread: ${feed_diff:+.2f})")
 
-        # 4. Aguarda ate o segundo 135 para a tomada de decisao estatistica
-        eval_sec = 135
-        if seconds_elapsed < eval_sec:
-            wait_time = eval_sec - seconds_elapsed
-            print(f"    Monitorando microestrutura via Chainlink... aguardando {wait_time}s ate o minuto 2:15")
-            time.sleep(wait_time)
+        # 4. Inicializa Rastreador de TWAP e Amostragem Ativa Contínua até os 135s
+        twap_tracker = CandleTWAPTracker(window_ts, strike, symbol="BTCUSDT")
+        twap_tracker.backfill_from_binance(time.time())
 
-        # 5. Analise de Drift e Sinal via Oraculo Chainlink
+        eval_sec = 135
+        now_sec = int(time.time()) - window_ts
+        if now_sec < eval_sec:
+            print(f"    Iniciando amostragem contínua de TWAP... aguardando até {eval_sec}s")
+            while True:
+                now_sec = int(time.time()) - window_ts
+                if now_sec >= eval_sec:
+                    break
+                s_price = get_chainlink_price() or get_binance_spot()
+                if s_price:
+                    twap_tracker.add_sample(s_price)
+                time.sleep(2.0)
+
+        # 5. Analise de Drift e Sinal via Oraculo Chainlink (Spot + TWAP)
         spot_eval = get_chainlink_price()
         if not spot_eval or spot_eval <= 0:
             spot_eval = get_binance_spot()
@@ -938,11 +1158,15 @@ class LiveTrader:
             self.traded_windows.add(window_ts)
             return
 
+        twap_tracker.add_sample(spot_eval)
         delta = spot_eval - strike
+        twap_eval = twap_tracker.get_current_twap()
+        twap_delta = twap_tracker.get_twap_delta()
         binance_eval = get_binance_spot() or spot_eval
         spread_eval = binance_eval - spot_eval
         binance_drift = binance_eval - binance_open
-        print(f"    Spot Chainlink aos 135s: ${spot_eval:,.2f} | Drift Real (Delta): ${delta:+.2f}")
+        print(f"    Spot Chainlink aos 135s: ${spot_eval:,.2f} | Drift Spot (Delta): ${delta:+.2f}")
+        print(f"    TWAP Acumulado aos 135s: ${twap_eval:,.2f} | Drift TWAP: ${twap_delta:+.2f}")
         print(f"    Binance Spot Ref: ${binance_eval:,.2f} | Drift Binance: ${binance_drift:+.2f} | Spread: ${spread_eval:+.2f}")
 
         # Busca mercado da Polymarket
@@ -971,24 +1195,26 @@ class LiveTrader:
         should_trade_primary = False
         is_streak_snapper = False
 
-        # Deadband dinâmico scale-invariant (2.1 bps do Strike ou piso mínimo de $15.00)
-        dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike * DEADBAND_BPS, 2))
+        # Deadband dinâmico scale-invariant modulado por Regime Diurno (Dukascopy/HistData + JEV)
+        dynamic_deadband, diurnal_regime = get_dynamic_deadband_gate(
+            strike, base_bps=DEADBAND_BPS, min_floor=DEADBAND_MIN_FLOOR
+        )
 
         if delta >= dynamic_deadband:
             target_side = "UP"
             target_token = token_up
             estimated_price = price_up
-            rationale = f"Drift Positivo Chainlink (+${delta:.1f} >= +${dynamic_deadband:.1f} acima do strike)"
+            rationale = f"Drift Positivo Chainlink (+${delta:.1f} >= +${dynamic_deadband:.1f} [{diurnal_regime.get('regime')} {diurnal_regime.get('deadband_multiplier')}x] acima do strike)"
             should_trade_primary = True
         elif delta <= -dynamic_deadband:
             target_side = "DOWN"
             target_token = token_down
             estimated_price = price_down
-            rationale = f"Drift Negativo Chainlink (-${abs(delta):.1f} <= -${dynamic_deadband:.1f} abaixo do strike)"
+            rationale = f"Drift Negativo Chainlink (-${abs(delta):.1f} <= -${dynamic_deadband:.1f} [{diurnal_regime.get('regime')} {diurnal_regime.get('deadband_multiplier')}x] abaixo do strike)"
             should_trade_primary = True
         else:
             # REGRA 1 (Deadband): Ruido (|Delta| < dynamic_deadband). Nao forcar aposta primaria no meio do caminho!
-            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND DINÂMICO]: Delta de ${delta:+.2f} está dentro da zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps).")
+            print(f"\n    [🛡️ FILTRO DE RUIDO DEADBAND DINÂMICO]: Delta de ${delta:+.2f} está dentro da zona morta (< ${dynamic_deadband:.2f} | Regime: {diurnal_regime.get('regime')} {diurnal_regime.get('deadband_multiplier')}x).")
             print("       -> Preservando capital! Nenhuma aposta primária forçada no ruído.")
             should_trade_primary = False
 
@@ -1007,6 +1233,32 @@ class LiveTrader:
                     print("       -> Preservando capital! Aposta cancelada para nao operar contra a lideranca da Binance.")
                     should_trade_primary = False
 
+        # REGRA DE CONVERGÊNCIA DE TWAP (Filtro contra Armadilha de Spike / Falso Breakout)
+        if should_trade_primary:
+            if target_side == "UP":
+                if twap_delta < -2.0:
+                    print(f"\n    [🛡️ FILTRO DE TWAP ORACLE]: Divergência Crítica detectada!")
+                    print(f"       Spot indica UP ({delta:+.2f}), mas TWAP Acumulado está DOWN ({twap_delta:+.2f})!")
+                    print("       -> Preservando capital! Aposta cancelada para não cair na armadilha de liquidação do oráculo TWAP.")
+                    should_trade_primary = False
+            elif target_side == "DOWN":
+                if twap_delta > 2.0:
+                    print(f"\n    [🛡️ FILTRO DE TWAP ORACLE]: Divergência Crítica detectada!")
+                    print(f"       Spot indica DOWN ({delta:+.2f}), mas TWAP Acumulado está UP ({twap_delta:+.2f})!")
+                    print("       -> Preservando capital! Aposta cancelada para não cair na armadilha de liquidação do oráculo TWAP.")
+                    should_trade_primary = False
+
+        # REGRA DE DISCREPÂNCIA DE ORÁCULO LEAD-LAG (Auditoria JEV: 86% Convicção / Prevenção Ciclo 156)
+        if should_trade_primary:
+            initial_spread = abs(binance_open - strike) if (binance_open and strike) else abs(feed_diff)
+            eval_spread = abs(spread_eval)
+            max_discrepancy = max(MAX_ORACLE_STRIKE_DISCREPANCY_USD, round(strike * 0.00065, 2))
+            if initial_spread > max_discrepancy or eval_spread > max_discrepancy:
+                print(f"\n    [🛡️ VETO DISCREPÂNCIA DE ORÁCULO LEAD-LAG]:")
+                print(f"       Spread Binance vs Chainlink na Abertura: ${initial_spread:.2f} | Aos 135s: ${eval_spread:.2f} (Máx Tolerado: ${max_discrepancy:.2f})")
+                print(f"       -> Defasagem crítica de oráculo detectada! Strike viciado por lag de feed. Preservando capital contra convergência tóxica.")
+                should_trade_primary = False
+
         if strike_captured_late and should_trade_primary:
             print(f"\n    [🛡️ FILTRO TEMPO]: Strike K amostrado com atraso (>20s). Entrada primaria cancelada para evitar delta contaminado.")
             should_trade_primary = False
@@ -1017,6 +1269,7 @@ class LiveTrader:
 
         # 6. Execucao da Ordem Real Primaria (se aprovada pelos filtros)
         has_primary = False
+        primary_stake = FIXED_STAKE
         sold_early = False
         early_sell_tx_hash = ""
         early_sell_price = 0.0
@@ -1041,22 +1294,62 @@ class LiveTrader:
                 print(f"       Best Bid: ${best_bid:.2f} ({ob_metrics['top_bid_size']:.1f} cotas) | Best Ask: ${best_ask:.2f} ({ob_metrics['top_ask_size']:.1f} cotas)")
                 print(f"       Spread: ${spread:.3f} | Microprice: ${microprice:.4f} | Imbalance L1: {top_imb:+.2f} | Depth Imb: {depth_imb:+.2f}")
 
-                # MELHORIA 1: Filtro de Spread do Order Book (Spread > 0.06 = iliquidez tóxica / slippage)
-                if spread > 0.06:
-                    print(f"       [🛡️ FILTRO DE SPREAD CLOB]: Spread ${spread:.3f} > $0.060 (Livro Iliquido).")
+                # REFINAMENTO DE SPREAD CLOB (Exemplo 12 Wiley 2025 / Aval JEV 90%)
+                spread_ok, spread_msg, spread_info = validate_clob_spread_gate(
+                    spread=spread,
+                    best_bid=best_bid,
+                    best_ask=best_ask,
+                    top_ask_size=ob_metrics.get("top_ask_size", 0.0),
+                    target_stake_usd=FIXED_STAKE,
+                    max_tolerable_spread=0.050,
+                    optimal_spread_ceiling=0.035,
+                    delay_tolerable_spread=0.065
+                )
+
+                if spread_info.get("action") == "DELAY_RETRY":
+                    print(f"       [⏳ TIMING DE SPREAD (Wiley 2025 Ex. 12)]: {spread_msg}")
+                    print(f"       -> Spread entre 5¢ e 6.5¢. Aguardando 2.0s para recomposição do livro L2...")
+                    time.sleep(2.0)
+                    fresh_ob = get_clob_orderbook(target_token)
+                    if fresh_ob:
+                        ob_metrics = fresh_ob
+                        spread = fresh_ob["spread"]
+                        best_bid = fresh_ob["best_bid"]
+                        best_ask = fresh_ob["best_ask"]
+                        microprice = fresh_ob["microprice"]
+                        top_imb = fresh_ob["top_imbalance"]
+                        depth_imb = fresh_ob["depth_imbalance"]
+                        spread_ok, spread_msg, spread_info = validate_clob_spread_gate(
+                            spread=spread, best_bid=best_bid, best_ask=best_ask,
+                            top_ask_size=fresh_ob.get("top_ask_size", 0.0),
+                            target_stake_usd=FIXED_STAKE,
+                            max_tolerable_spread=0.055
+                        )
+                        if spread_ok:
+                            print(f"       [✅ LIQUIDEZ RECOMPOSTA]: Spread apertou para ${spread:.3f}! Entrada autorizada.")
+                        else:
+                            print(f"       [🛡️ VETO APÓS TOLERÂNCIA]: {spread_msg}. Entrada abortada para evitar slippage.")
+                            should_trade_primary = False
+                    else:
+                        should_trade_primary = False
+                elif not spread_ok:
+                    print(f"       [🛡️ FILTRO DE SPREAD CLOB]: {spread_msg}")
                     print("       -> Preservando capital! Entrada cancelada devido ao risco de slippage tóxico.")
                     should_trade_primary = False
+                else:
+                    print(f"       [✅ SPREAD CLOB APROVADO]: {spread_msg} (Regime: {spread_info['regime']})")
 
                 # MELHORIA 2: Filtro de Desbalanceamento do Order Book (Ask Wall Confirmation)
-                elif top_imb < -0.25 and depth_imb < -0.20:
-                    print(f"       [🛡️ FILTRO DE IMBALANCE CLOB]: Desbalanceamento desfavorável (L1: {top_imb:+.2f}, Depth: {depth_imb:+.2f}).")
-                    print("       -> Preservando capital! Muralha de venda institucional (Ask Wall) detectada. Entrada cancelada.")
-                    should_trade_primary = False
-                else:
-                    # MELHORIA 3: Execucao com Microprice Ponderado por Volume
-                    if 0.01 <= microprice <= 0.99:
-                        estimated_price = round(microprice, 2)
-                        print(f"       -> Microprice Ponderado adotado para execução: ${estimated_price:.2f}")
+                if should_trade_primary:
+                    if top_imb < -0.25 and depth_imb < -0.20:
+                        print(f"       [🛡️ FILTRO DE IMBALANCE CLOB]: Desbalanceamento desfavorável (L1: {top_imb:+.2f}, Depth: {depth_imb:+.2f}).")
+                        print("       -> Preservando capital! Muralha de venda institucional (Ask Wall) detectada. Entrada cancelada.")
+                        should_trade_primary = False
+                    else:
+                        # MELHORIA 3: Execucao com Microprice Ponderado por Volume
+                        if 0.01 <= microprice <= 0.99:
+                            estimated_price = round(microprice, 2)
+                            print(f"       -> Microprice Ponderado adotado para execução: ${estimated_price:.2f}")
             else:
                 # REGRA NO BOOK, NO TRADE (Audit 2.8): Sem Order Book L2 confirmado, nao opera
                 print(f"\n    [🛡️ NO BOOK, NO TRADE (Audit 2.8)]: Impossível obter Order Book L2 via CLOB.")
@@ -1095,34 +1388,133 @@ class LiveTrader:
                         print(f"       [🔥 ALTA CONVICÇÃO]: Cascata de Liquidação confirmando {target_side} (${liq_stats['total_vol_usd']:,.0f} liquidado)!")
                         rationale += f" + Confirmação de Liquidação ({liq_stats['dominant_signal']})"
 
-            # REGRA 4: Filtro de CVD Tick Data (Anti-Armadilha de Absorção Institucional e Taker Divergence)
+            # REGRA 4: Filtro de CVD / OFI Tick Data (Anti-Armadilha de Absorção Institucional e Taker Divergence)
             if should_trade_primary and not is_streak_snapper:
                 cvd_stats = self.cvd_watcher.get_window_cvd(window_seconds=135)
                 net_cvd_usd = cvd_stats["net_cvd_usd"]
                 net_cvd_btc = net_cvd_usd / max(1.0, spot_eval)
-                print(f"\n    [🌊 FLUXO DE CVD - CUMULATIVE VOLUME DELTA]:")
-                print(f"       Net CVD: ${net_cvd_usd/1e6:+.2f}M ({net_cvd_btc:+.2f} BTC) | Ratio Compra: {cvd_stats['cvd_ratio']*100:.1f}% | Sinal: {cvd_stats['dominant_signal']} ({cvd_stats['source']})")
+                bookticker_info = self.cvd_watcher.get_order_book_imbalance(lookback_sec=3.0)
+                rolling_obi = bookticker_info.get("rolling_obi", 0.0)
 
-                # VETO JEV 1: Se Delta indicar UP, mas fluxo taker estiver negativo em > 15 BTC (ou dominant DOWN)
-                if target_side == "UP" and (cvd_stats["dominant_signal"] == "DOWN" or net_cvd_btc < -15.0):
-                    print(f"       [🛡️ FILTRO CVD / TAKER VETO]: Divergência detectada! Preço subindo (Delta: ${delta:+.2f}), mas agressão institucional é de VENDA ({net_cvd_btc:+.1f} BTC / ${net_cvd_usd/1e6:+.2f}M).")
-                    print("       -> Preservando capital! Abortando entrada primária para evitar Bull Trap (Jev 0-Lookahead Rule).")
-                    should_trade_primary = False
-                # VETO JEV 2: Se Delta indicar DOWN, mas fluxo taker estiver positivo em > 15 BTC (ou dominant UP)
-                elif target_side == "DOWN" and (cvd_stats["dominant_signal"] == "UP" or net_cvd_btc > 15.0):
-                    print(f"       [🛡️ FILTRO CVD / TAKER VETO]: Divergência detectada! Preço caindo (Delta: ${delta:+.2f}), mas agressão institucional é de COMPRA ({net_cvd_btc:+.1f} BTC / ${net_cvd_usd/1e6:+.2f}M).")
-                    print("       -> Preservando capital! Abortando entrada primária para evitar Bear Trap (Jev 0-Lookahead Rule).")
+                print(f"\n    [🌊 FLUXO DE CVD / OFI & BOOKTICKER (100 GB TICK & BOOK ALPHA)]:")
+                print(f"       Net CVD: ${net_cvd_usd/1e6:+.2f}M ({net_cvd_btc:+.2f} BTC) | Ratio Compra: {cvd_stats['cvd_ratio']*100:.1f}% | Sinal: {cvd_stats['dominant_signal']} ({cvd_stats['source']})")
+                print(f"       Top-of-Book OBI: {rolling_obi:+.3f} ({bookticker_info.get('obi_direction', 'NEUTRAL')}) | Spread: ${bookticker_info.get('spread_usd', 0):.2f}")
+
+                # Gate Institucional de Microestrutura JEV (CVD + BookTicker OBI Anti-Absorção)
+                ofi_ok, ofi_msg = check_order_flow_imbalance_gate(
+                    target_side=target_side,
+                    dominant_signal=cvd_stats["dominant_signal"],
+                    net_cvd_usd=net_cvd_usd,
+                    cvd_ratio=cvd_stats["cvd_ratio"],
+                    bookticker_obi=rolling_obi
+                )
+
+                if not ofi_ok:
+                    print(f"       [🛡️ FILTRO OFI / ABSORÇÃO PASSIVA VETO (JEV)]: {ofi_msg}")
+                    print("       -> Preservando capital! Abortando entrada primária para evitar armadilha de liquidez de baleia.")
                     should_trade_primary = False
                 elif cvd_stats["dominant_signal"] == target_side:
-                    print(f"       [🔥 ALTA CONVICÇÃO CVD]: Fluxo de agressão institucional alinhado com {target_side} ({net_cvd_btc:+.1f} BTC)!")
-                    rationale += f" + Convicção CVD ({cvd_stats['dominant_signal']}, {net_cvd_btc:+.1f} BTC)"
+                    print(f"       [🔥 ALTA CONVICÇÃO CVD/OFI]: Fluxo institucional 100% alinhado com {target_side} ({net_cvd_btc:+.1f} BTC)!")
+                    rationale += f" + Convicção CVD/OFI ({cvd_stats['dominant_signal']}, {net_cvd_btc:+.1f} BTC)"
+
+                # Gate de Amplitude e Toxic Flow de Altcoins (JEV Lote 3 - Anti-Fakeout)
+                if should_trade_primary:
+                    try:
+                        alt_deltas = {}
+                        sol_st = safe_read_json(os.path.join(BASE_DIR, "sol_live_market_state.json"), {})
+                        if sol_st and sol_st.get("strike") and sol_st.get("spot"):
+                            alt_deltas["SOL"] = (float(sol_st["spot"]) - float(sol_st["strike"])) / float(sol_st["strike"])
+                        eth_st = safe_read_json(os.path.join(BASE_DIR, "eth_live_market_state.json"), {})
+                        if eth_st and eth_st.get("strike") and eth_st.get("spot"):
+                            alt_deltas["ETH"] = (float(eth_st["spot"]) - float(eth_st["strike"])) / float(eth_st["strike"])
+
+                        alt_ok, alt_msg = check_altcoin_market_breadth_gate(target_side=target_side, altcoin_deltas=alt_deltas)
+                        if not alt_ok:
+                            print(f"       [🛡️ FILTRO BREADTH ALTCOINS VETO (JEV Lote 3)]: {alt_msg}")
+                            print("       -> Preservando capital! Abortando entrada: Bitcoin diverge do fluxo geral de altcoins.")
+                            should_trade_primary = False
+                        else:
+                            print(f"       [✅ BREADTH ALTCOINS]: Fluxo cruzado SOL/ETH sem divergências críticas contra {target_side}.")
+                    except Exception:
+                        pass
 
         if should_trade_primary:
-            print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice): ${estimated_price:.2f}")
+            # 6.2 PRICING INSTITUCIONAL: Black-Scholes + Atualização Bayesiana (Anti-Colinearidade)
+            sec_left = max(1, 300 - int(time.time() - window_ts))
+            eff_vol = 0.32
+            tau = max(1.0, float(sec_left)) / (365.25 * 24 * 3600)
+            sig_sqrt_tau = eff_vol * math.sqrt(tau)
+            d2 = (math.log(max(1.0, spot_eval) / max(1.0, strike)) - 0.5 * (eff_vol ** 2) * tau) / max(1e-9, sig_sqrt_tau)
+            bs_prob_up = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+            bs_fair = bs_prob_up if target_side == "UP" else (1.0 - bs_prob_up)
+
+            # Sinal de microestrutura para evidência Bayesiana (OBI e Microprice)
+            p_sig = 0.65 if (ob_metrics and ob_metrics["top_imbalance"] > 0.1) else (0.35 if (ob_metrics and ob_metrics["top_imbalance"] < -0.1) else 0.50)
+            model_fair_value = bayesian_fair_value(
+                prior_prob=bs_fair,
+                p_signal_if_outcome=p_sig if target_side == "UP" else (1.0 - p_sig),
+                p_signal_if_alternative=0.50,
+                collinearity_discount=0.75
+            )
+
+            # 6.3 DIMENSIONAMENTO DINÂMICO POR KELLY FRACIONÁRIO (Blindado contra Overbetting)
+            real_usdc = self.get_usdc_balance() if self.execution_mode != "paper" else 50.0
+            cur_bankroll = max(10.0, real_usdc)
+            min_stake_val = 1.00
+            # Teto estrito: máximo de 8% da carteira real ou $2.50 (o que for menor), garantindo aposta segura entre $1.00 e $2.50
+            max_stake_val = min(2.50, max(1.00, round(cur_bankroll * 0.08, 2)))
+            target_stake, kelly_status = compute_dynamic_stake(
+                bankroll=cur_bankroll,
+                win_probability=model_fair_value,
+                entry_price=estimated_price,
+                fallback_stake=FIXED_STAKE,
+                kelly_fraction=0.25,
+                min_stake=min_stake_val,
+                max_stake=max_stake_val
+            )
+
+            if target_stake <= 0.0:
+                print(f"    [🛡️ VETO KELLY FRACIONÁRIO]: {kelly_status}. Edge líquido insuficiente para justificar exposição.")
+                should_trade_primary = False
+            else:
+                # 6.4 PROFUNDIDADE REAL DO LIVRO (VWAP L2) E VALIDAÇÃO DE NET EDGE EXECUTÁVEL
+                asks_raw = ob_metrics.get("asks_raw", []) if ob_metrics else []
+                vwap_price, vwap_cost, vwap_shares, slip_bps = calculate_vwap_ask(asks_raw, target_usd=target_stake)
+
+                if vwap_price is None:
+                    print(f"    [🛡️ FILTRO DE PROFUNDIDADE VWAP]: Livro L2 raso! Liquidez disponível (${vwap_cost:.2f}) insuficiente para absorver ordem de ${target_stake:.2f}.")
+                    should_trade_primary = False
+                else:
+                    # Checagem centralizada no RiskGate (Fail-Closed)
+                    gate_ok, gate_msg = check_pre_trade_gate(
+                        desk_id="DESK1_BTC_5M",
+                        target_side=target_side,
+                        stake=target_stake,
+                        spot_price=spot_eval,
+                        strike_price=strike,
+                        oracle_timestamp=time.time(),
+                        current_balance=cur_bankroll,
+                        execution_mode=self.execution_mode,
+                        fair_value=model_fair_value,
+                        vwap_price=vwap_price,
+                        min_net_edge=0.015
+                    )
+                    if not gate_ok:
+                        print(f"    [🛡️ RISK GATE VETO]: {gate_msg}")
+                        should_trade_primary = False
+                    else:
+                        estimated_price = vwap_price
+                        primary_stake = target_stake
+                        print(f"    [💎 EXECUÇÃO APROVADA - VWAP + KELLY]:")
+                        print(f"       Fair Value Bayesiano: {model_fair_value:.2%} | VWAP Fill: ${vwap_price:.4f} (Slippage: {slip_bps:.1f} bps)")
+                        print(f"       Stake Kelly (25%): ${target_stake:.2f} ({kelly_status}) | Cotas Estimadas: {vwap_shares:.2f}")
+
+        if should_trade_primary:
+            print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice/VWAP): ${estimated_price:.4f}")
             print(f"       Racional: {rationale}")
-            print(f"       Enviando ordem de ${FIXED_STAKE:.2f} USDC para a CLOB V2...")
+            print(f"       Enviando ordem de ${primary_stake:.2f} USDC para a CLOB V2...")
             limit_p = min(PRIMARY_MAX_PRICE, round(estimated_price + 0.01, 2))
-            order_res = self.place_live_order(target_token, "BUY", FIXED_STAKE, price=limit_p, max_price=PRIMARY_MAX_PRICE)
+            order_res = self.place_live_order(target_token, "BUY", primary_stake, price=limit_p, max_price=PRIMARY_MAX_PRICE)
             print(f"       Resultado do Envio Primário: {order_res.get('status')}")
             if order_res.get("status") == "SUCCESS":
                 resp_data = order_res.get("response", {})
@@ -1132,8 +1524,8 @@ class LiveTrader:
 
                 if self.execution_mode == "paper":
                     has_primary = True
-                    shares = round(FIXED_STAKE / max(0.01, estimated_price), 4)
-                    print(f"       -> [MODO PAPER] ORDEM PRIMÁRIA SIMULADA! ID: {order_id} | {shares:.4f} cotas @ ${estimated_price:.2f}")
+                    shares = round(primary_stake / max(0.01, estimated_price), 4)
+                    print(f"       -> [MODO PAPER] ORDEM PRIMÁRIA SIMULADA! ID: {order_id} | {shares:.4f} cotas @ ${estimated_price:.4f}")
                 else:
                     real_tok_bal = 0.0
                     for _attempt in range(6):
@@ -1159,11 +1551,25 @@ class LiveTrader:
                         print(f"       [AVISO EXECUÇÃO] Ordem enviada mas sem liquidez no limite (${limit_p:.2f}). Nenhuma cota recebida (FAK não-preenchido).")
                         print("       -> Entrada primária desconsiderada (evitando registro de posição fantasma).")
             else:
-                has_primary = False
-                order_id = "FAILED"
-                tx_hash = ""
-                print(f"       [Falha no envio da ordem]: {order_res.get('error')}")
-                print("       -> Entrada primária não realizada. Monitorando oportunidade de Sweeper (BTC5MScour)...")
+                # Dupla verificação no loop principal contra falha/timeout
+                reconciled_bal = 0.0
+                if self.execution_mode != "paper":
+                    time.sleep(1.0)
+                    reconciled_bal = self.get_token_balance(target_token)
+                
+                if reconciled_bal and reconciled_bal >= 0.5:
+                    has_primary = True
+                    shares = reconciled_bal
+                    order_id = "RECONCILED_ONCHAIN"
+                    tx_hash = ""
+                    print(f"       [🚨 RECUPERAÇÃO DE ENTRADA]: Resposta indicou falha ({order_res.get('error')}), mas {shares:.4f} cotas foram localizadas na Safe!")
+                    print("       -> Posição assumida com sucesso para gestão quantitativa!")
+                else:
+                    has_primary = False
+                    order_id = "FAILED"
+                    tx_hash = ""
+                    print(f"       [Falha no envio da ordem]: {order_res.get('error')}")
+                    print("       -> Entrada primária não realizada. Monitorando oportunidade de Sweeper (BTC5MScour)...")
         else:
             print("       -> Entrada primária dispensada. Monitorando oportunidades defensivas e Sweeper (BTC5MScour)...")
 
@@ -1199,10 +1605,13 @@ class LiveTrader:
             if elapsed >= 285:
                 break
 
-            current_chainlink = get_chainlink_price()
+            current_chainlink = get_chainlink_price() or get_binance_spot()
             if current_chainlink:
                 last_candle_chainlink = current_chainlink
                 current_delta = current_chainlink - strike
+                twap_tracker.add_sample(current_chainlink)
+                current_twap = twap_tracker.get_current_twap()
+                current_twap_delta = twap_tracker.get_twap_delta()
 
                 # --- ADD-ON 1: SirMartingale (Take-Profit Dinâmico Escalonado) ---
                 if has_primary and not sold_early and elapsed >= 165:
@@ -1215,10 +1624,14 @@ class LiveTrader:
 
                         # 2. Se entrada barata (<= $0.52), meta de +40% já garante excelente realização
                         if estimated_price <= 0.52:
-                            min_tp_price = min(min_tp_price, max(0.72, round(estimated_price * 1.40, 2)))
+                            min_tp_price = min(min_tp_price, max(0.70, round(estimated_price * 1.40, 2)))
+
+                        # 2.1 Refinamento JEV (Staged TP para cotas baratas <= $0.40): Travar lucro expressivo se bid bater >= 68¢ aos 200s+
+                        if estimated_price <= 0.40 and elapsed >= 200:
+                            min_tp_price = min(min_tp_price, max(0.68, round(estimated_price * 1.75, 2)))
 
                         # 3. Se tempo avançado (elapsed >= 225s), garante lucro sólido antes dos segundos finais
-                        if elapsed >= 225 and cur_bid >= 0.78 and cur_bid >= round(estimated_price * 1.25, 2):
+                        if elapsed >= 225 and cur_bid >= 0.76 and cur_bid >= round(estimated_price * 1.25, 2):
                             min_tp_price = min(min_tp_price, cur_bid)
 
                         if cur_bid >= min_tp_price and bid_size >= 1.0:
@@ -1246,14 +1659,21 @@ class LiveTrader:
                                         sell_confirmed = False
 
                                 if sell_confirmed:
-                                    sold_early = True
-                                    has_primary = False
                                     s_resp = sell_res.get("response", {})
                                     s_hashes = s_resp.get("transactionsHashes") or []
                                     early_sell_tx_hash = s_hashes[0] if s_hashes else (s_resp.get("orderID") or "EXECUTED")
-                                    early_sell_price = cur_bid
-                                    early_sell_payout = round(sell_shares * cur_bid, 2)
-                                    print(f"       -> VENDA ANTECIPADA EXECUTADA! Tx: {early_sell_tx_hash} | Payout Travado: ${early_sell_payout:.2f} USDC")
+                                    resp_tp_price = s_resp.get("price")
+                                    actual_tp_price = resp_tp_price if (resp_tp_price is not None and resp_tp_price > 0) else cur_bid
+                                    if self.execution_mode != "paper" and self.client:
+                                        fill = self.get_latest_clob_fill(target_token, side="SELL", min_timestamp=window_ts)
+                                        if fill:
+                                            actual_tp_price = fill["price"]
+                                            early_sell_tx_hash = fill["tx_hash"] or early_sell_tx_hash
+                                    sold_early = True
+                                    has_primary = False
+                                    early_sell_price = actual_tp_price
+                                    early_sell_payout = round(sell_shares * actual_tp_price, 2)
+                                    print(f"       -> VENDA ANTECIPADA EXECUTADA! Tx: {early_sell_tx_hash} | Payout Travado: ${early_sell_payout:.2f} USDC (Preço: ${actual_tp_price:.2f})")
                                 else:
                                     print("       -> Venda antecipada não consumada no livro. Posição mantida aberta para próxima tentativa.")
                             else:
@@ -1262,37 +1682,69 @@ class LiveTrader:
                 # --- DEFESA: Bonereaper Hedge Dinamico e Evaporação de Drift ---
                 reversal = False
                 evaporation = False
+                twap_compromised = False
                 if has_primary and not sold_early:
                     cur_b_spot = get_binance_spot() or current_chainlink
                     b_open = self.binance_opens.get(window_ts, strike)
                     b_drift = (cur_b_spot - b_open) if (cur_b_spot and b_open) else current_delta
                     
-                    # 1. Reversão contra o strike
-                    if target_side == "UP":
-                        if current_delta <= -HEDGE_DELTA_THRESHOLD or (current_delta < -2.0 and b_drift < -5.0):
-                            reversal = True
-                    elif target_side == "DOWN":
-                        if current_delta >= HEDGE_DELTA_THRESHOLD or (current_delta > 2.0 and b_drift > 5.0):
-                            reversal = True
+                    # 1. Reversão contra o strike além do ruído do Bitcoin (Escudo Anti-Whipsaw >= 210s)
+                    dynamic_rev_thresh, _ = get_dynamic_deadband_gate(strike, base_bps=DEADBAND_BPS, min_floor=20.0)
+                    if elapsed >= 210:
+                        if target_side == "UP":
+                            if (current_delta <= -dynamic_rev_thresh and b_drift <= -10.0) or (current_delta <= -15.0 and b_drift <= -15.0):
+                                reversal = True
+                        elif target_side == "DOWN":
+                            if (current_delta >= dynamic_rev_thresh and b_drift >= 10.0) or (current_delta >= 15.0 and b_drift >= 15.0):
+                                reversal = True
 
-                    # 2. Evaporação de Drift (Lição Ciclo 116: perda de >85% da borda inicial)
-                    if not reversal and elapsed >= 180 and abs(entry_delta) >= 25.0:
-                        if target_side == "UP" and current_delta <= 2.50:
+                    # 2. Evaporação de Drift: só aciona nos segundos finais (>= 225s) se a margem foi completamente perdida e cruzou contra
+                    if not reversal and elapsed >= 225 and abs(entry_delta) >= 25.0:
+                        if target_side == "UP" and current_delta <= -10.0 and b_drift <= -8.0:
                             evaporation = True
-                        elif target_side == "DOWN" and current_delta >= -2.50:
+                        elif target_side == "DOWN" and current_delta >= 10.0 and b_drift >= 8.0:
                             evaporation = True
 
-                # Trata evaporação de borda preventivamente via Stop-Loss
-                if evaporation and not sold_early and not hedged:
-                    print(f"\n    [⚠️ EVAPORAÇÃO DE DRIFT DETECTADA!] Aos {elapsed}s:")
-                    print(f"       Delta inicial foi ${entry_delta:+.2f}, mas desabou para ${current_delta:+.2f} (perda de margem de segurança).")
-                    sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
-                    if sl_data["success"]:
-                        sold_early = True
-                        has_primary = False
-                        early_sell_tx_hash = sl_data["tx_hash"]
-                        early_sell_price = sl_data["price"]
-                        early_sell_payout = sl_data["payout"]
+                    # 3. Comprometimento Matemático de TWAP (>= 195s)
+                    # Se o TWAP estiver desfavorável e o preço à vista necessário para virar for inalcançável:
+                    if not reversal and not evaporation and elapsed >= 195:
+                        if target_side == "UP":
+                            req_spot = twap_tracker.get_required_spot_to_win("UP", elapsed)
+                            if req_spot and (req_spot - current_chainlink) >= 15.0:
+                                twap_compromised = True
+                        elif target_side == "DOWN":
+                            req_spot = twap_tracker.get_required_spot_to_win("DOWN", elapsed)
+                            if req_spot and (current_chainlink - req_spot) >= 15.0:
+                                twap_compromised = True
+
+                # Trata evaporação de borda ou comprometimento de TWAP preventivamente via Stop-Loss
+                if (evaporation or twap_compromised) and not sold_early and not hedged:
+                    alert_desc = "COMPROMETIMENTO DE TWAP ORACLE" if twap_compromised else "EVAPORAÇÃO DE DRIFT"
+                    print(f"\n    [⚠️ {alert_desc} DETECTADO!] Aos {elapsed}s:")
+                    print(f"       Spot Delta: ${current_delta:+.2f} | TWAP Delta: ${current_twap_delta:+.2f} (contra {target_side}).")
+                    
+                    # Escudo Anti-Sweep (Ziad Francis SMC): Veta stop-loss se for apenas absorção transitória de liquidez (wick)
+                    sweep_check = evaluate_anti_sweep_shield(
+                        symbol="BTCUSDT",
+                        window_ts=window_ts,
+                        elapsed=elapsed,
+                        target_side=target_side,
+                        strike=strike,
+                        current_spot=cur_b_spot,
+                        current_delta=current_delta,
+                        twap_delta=current_twap_delta
+                    )
+                    if sweep_check["is_sweep"]:
+                        if elapsed % 10 < 3:
+                            print(f"    [🛡️ ANTI-SWEEP SHIELD (ZIAD ALGO)]: Veto de Stop-Loss aos {elapsed}s! {sweep_check['reason']}")
+                    else:
+                        sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                        if sl_data["success"]:
+                            sold_early = True
+                            has_primary = False
+                            early_sell_tx_hash = sl_data["tx_hash"]
+                            early_sell_price = sl_data["price"]
+                            early_sell_payout = sl_data["payout"]
 
                 if reversal and not hedged and not hedge_attempted:
                     hedge_attempted = True
@@ -1336,23 +1788,49 @@ class LiveTrader:
                                     hedge_shares = real_h_tok
                                     print(f"       -> HEDGE EXECUTADO COM SUCESSO! Tx: {hedge_tx_hash} | {hedge_shares:.4f} cotas @ ${hedge_price:.2f}")
                                 else:
-                                    print(f"       [AVISO HEDGE] Ordem enviada mas cota de hedge nao preenchida (FAK). Acionando Stop-Loss de emergencia...")
-                                    sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
-                                    if sl_data["success"]:
-                                        sold_early = True
-                                        has_primary = False
-                                        early_sell_tx_hash = sl_data["tx_hash"]
-                                        early_sell_price = sl_data["price"]
-                                        early_sell_payout = sl_data["payout"]
+                                    print(f"       [AVISO HEDGE] Ordem enviada mas cota de hedge nao preenchida (FAK). Avaliando Stop-Loss com Anti-Sweep...")
+                                    sweep_check = evaluate_anti_sweep_shield(
+                                        symbol="BTCUSDT",
+                                        window_ts=window_ts,
+                                        elapsed=elapsed,
+                                        target_side=target_side,
+                                        strike=strike,
+                                        current_spot=cur_b_spot,
+                                        current_delta=current_delta,
+                                        twap_delta=current_twap_delta
+                                    )
+                                    if not sweep_check["is_sweep"]:
+                                        sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                                        if sl_data["success"]:
+                                            sold_early = True
+                                            has_primary = False
+                                            early_sell_tx_hash = sl_data["tx_hash"]
+                                            early_sell_price = sl_data["price"]
+                                            early_sell_payout = sl_data["payout"]
+                                    else:
+                                        print(f"       [🛡️ ANTI-SWEEP SHIELD (ZIAD ALGO)]: Veto de Stop-Loss pós-hedge! {sweep_check['reason']}")
                         else:
-                            print(f"       [Falha no hedge]: {hedge_res.get('error')}. Acionando Stop-Loss de emergencia...")
-                            sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
-                            if sl_data["success"]:
-                                sold_early = True
-                                has_primary = False
-                                early_sell_tx_hash = sl_data["tx_hash"]
-                                early_sell_price = sl_data["price"]
-                                early_sell_payout = sl_data["payout"]
+                            print(f"       [Falha no hedge]: {hedge_res.get('error')}. Avaliando Stop-Loss com Anti-Sweep...")
+                            sweep_check = evaluate_anti_sweep_shield(
+                                symbol="BTCUSDT",
+                                window_ts=window_ts,
+                                elapsed=elapsed,
+                                target_side=target_side,
+                                strike=strike,
+                                current_spot=cur_b_spot,
+                                current_delta=current_delta,
+                                twap_delta=current_twap_delta
+                            )
+                            if not sweep_check["is_sweep"]:
+                                sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                                if sl_data["success"]:
+                                    sold_early = True
+                                    has_primary = False
+                                    early_sell_tx_hash = sl_data["tx_hash"]
+                                    early_sell_price = sl_data["price"]
+                                    early_sell_payout = sl_data["payout"]
+                            else:
+                                print(f"       [🛡️ ANTI-SWEEP SHIELD (ZIAD ALGO)]: Veto de Stop-Loss pós-hedge! {sweep_check['reason']}")
                     else:
                         if hedge_best_ask > HEDGE_MAX_PRICE:
                             print(f"    [🛡️ HEDGE RECUSADO - EV NEGATIVO]: Preco de {hedge_side} esta em ${hedge_best_ask:.2f} (> ${HEDGE_MAX_PRICE:.2f}).")
@@ -1361,13 +1839,58 @@ class LiveTrader:
                             print(f"       [Aviso Hedge] Saldo insuficiente (${cur_bal:.2f}) para hedge de ${HEDGE_STAKE:.2f}")
 
                         # PROTOCOLO DE STOP-LOSS ANTECIPADO: Vender cotas da posicao perdedora na CLOB
-                        sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
-                        if sl_data["success"]:
-                            sold_early = True
-                            has_primary = False
-                            early_sell_tx_hash = sl_data["tx_hash"]
-                            early_sell_price = sl_data["price"]
-                            early_sell_payout = sl_data["payout"]
+                        # Escudo Anti-Whipsaw (>= 215s) + Escudo Anti-Sweep Ziad Francis (Veto de wicks sem fechamento estrutural)
+                        if elapsed >= 215:
+                            sweep_check = evaluate_anti_sweep_shield(
+                                symbol="BTCUSDT",
+                                window_ts=window_ts,
+                                elapsed=elapsed,
+                                target_side=target_side,
+                                strike=strike,
+                                current_spot=cur_b_spot,
+                                current_delta=current_delta,
+                                twap_delta=current_twap_delta
+                            )
+                            if sweep_check["is_sweep"]:
+                                if elapsed % 10 < 3:
+                                    print(f"    [🛡️ ANTI-SWEEP SHIELD (ZIAD ALGO)]: Veto de Stop-Loss aos {elapsed}s! {sweep_check['reason']}")
+                            else:
+                                sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                                if sl_data["success"]:
+                                    sold_early = True
+                                    has_primary = False
+                                    early_sell_tx_hash = sl_data["tx_hash"]
+                                    early_sell_price = sl_data["price"]
+                                    early_sell_payout = sl_data["payout"]
+                        else:
+                            if elapsed % 10 < 4:
+                                print(f"       [🛡️ Anti-Whipsaw Shield]: {elapsed}s < 215s. Repique transitório suspeito. Aguardando confirmação antes de estopar.")
+
+                # ── ADD-ON 3: BONEREAPER LATE-WINDOW SALVAGE & DUAL ALIGNMENT GATE (255s-288s) ──
+                # Se estamos na reta final (255s a 288s), com posição aberta desprotegida,
+                # e o Spot cruzou o strike para o lado perdedor ou há divergência fatal Spot vs TWAP:
+                if has_primary and not sold_early and not hedged and 255 <= elapsed <= 288:
+                    spot_losing = (target_side == "UP" and current_delta < -3.0) or \
+                                  (target_side == "DOWN" and current_delta > 3.0)
+                    
+                    # Checagem de divergência fatal TWAP vs Spot (Lição do Ciclo 158)
+                    twap_spot_divergence = (target_side == "UP" and current_twap_delta > 0 and current_delta < -5.0) or \
+                                           (target_side == "DOWN" and current_twap_delta < 0 and current_delta > 5.0)
+
+                    if spot_losing or twap_spot_divergence:
+                        ob_salvage = get_clob_orderbook(target_token)
+                        bid_salvage = ob_salvage["best_bid"] if ob_salvage else 0.0
+                        if bid_salvage >= STOP_LOSS_MIN_BID:
+                            print(f"\n    [🚨 BONEREAPER LATE-WINDOW SALVAGE]: Reta final ({elapsed}s/300s) com Spot no lado perdedor!")
+                            print(f"       Spot Delta: ${current_delta:+.2f} | TWAP Delta: ${current_twap_delta:+.2f} | Best Bid: ${bid_salvage:.2f}")
+                            print(f"       Estancando perda total antes da expiração a zero...")
+                            sl_data = self._execute_emergency_stop_loss(target_token, target_side, shares, window_ts)
+                            if sl_data.get("success"):
+                                sold_early = True
+                                has_primary = False
+                                early_sell_tx_hash = sl_data["tx_hash"]
+                                early_sell_price = sl_data["price"]
+                                early_sell_payout = sl_data["payout"]
 
                 # --- ADD-ON 2: BTC5MScour Sweeper (Desativado em modo Sniper Purista - EV negativo) ---
                 if SCOUR_ENABLED and not has_primary and not sold_early and not hedged and not scour_executed and not scour_attempted and elapsed >= 240:
@@ -1482,17 +2005,23 @@ class LiveTrader:
         # Tentativa rapida (2 retries = ~6s): se ja liquidou na Polymarket, adota imediatamente
         official_winner = get_polymarket_resolution(window_ts, max_retries=2)
 
-        # Se ainda nao liquidou na API, usa o fechamento intra-vela da Chainlink como apuracao provisoria
+        # Se ainda nao liquidou na API, usa a média TWAP acumulada da Chainlink como apuração provisória
         final_chainlink = last_candle_chainlink or get_chainlink_price() or spot_eval
+        twap_tracker.add_sample(final_chainlink)
         final_delta = final_chainlink - strike
-        chainlink_winner = "UP" if final_chainlink >= strike else "DOWN"
+        final_twap = twap_tracker.get_current_twap()
+        final_twap_delta = twap_tracker.get_twap_delta()
+        chainlink_twap_winner = "UP" if final_twap_delta >= 0 else "DOWN"
+
+        print(f"\n    [🏁 APURAÇÃO FINAL]: Spot Final: ${final_chainlink:,.2f} (Delta Spot: ${final_delta:+.2f})")
+        print(f"       TWAP Final Acumulado: ${final_twap:,.2f} (Delta TWAP: ${final_twap_delta:+.2f}) -> Vencedor Oráculo TWAP: {chainlink_twap_winner}")
 
         if official_winner:
             winner = official_winner
             winner_source = "POLYMARKET_OFFICIAL"
         else:
-            winner = chainlink_winner
-            winner_source = "CHAINLINK_ORACLE (PROVISORIO)"
+            winner = chainlink_twap_winner
+            winner_source = "CHAINLINK_TWAP_ORACLE (PROVISORIO)"
 
         # Payouts calculation
         if sold_early:
@@ -1512,7 +2041,7 @@ class LiveTrader:
         total_payout = round(payout_primary + payout_hedge + payout_scour, 2)
         total_stake = 0.0
         if has_primary or sold_early:
-            total_stake += FIXED_STAKE
+            total_stake += primary_stake
         if hedged:
             total_stake += HEDGE_STAKE
         if scour_executed:
@@ -1560,6 +2089,7 @@ class LiveTrader:
             if scour_executed and (scour_side == winner):
                 unredeemed_this_cycle += payout_scour
         if unredeemed_this_cycle > 0:
+            self.session_pending_unredeemed = round(self.session_pending_unredeemed + unredeemed_this_cycle, 2)
             self.pending_unredeemed_payouts = round(self.pending_unredeemed_payouts + unredeemed_this_cycle, 2)
             print(f"       [RECONCILIAÇÃO ON-CHAIN]: +${unredeemed_this_cycle:.2f} em cotas vencedoras aguardando resgate/redeem para USDC.")
 
@@ -1573,8 +2103,11 @@ class LiveTrader:
 
         # Se o saldo USDC aumentou na carteira (redeem processado pelo relayer ou manual), abate dos pendentes
         usdc_gain = round(new_balance - previous_balance, 2)
-        if usdc_gain > 0 and self.pending_unredeemed_payouts > 0:
-            self.pending_unredeemed_payouts = max(0.0, round(self.pending_unredeemed_payouts - usdc_gain, 2))
+        if usdc_gain > 0:
+            if self.session_pending_unredeemed > 0:
+                self.session_pending_unredeemed = max(0.0, round(self.session_pending_unredeemed - usdc_gain, 2))
+            if self.pending_unredeemed_payouts > 0:
+                self.pending_unredeemed_payouts = max(0.0, round(self.pending_unredeemed_payouts - usdc_gain, 2))
 
         self.current_balance = new_balance
 
@@ -1584,13 +2117,13 @@ class LiveTrader:
         total_pnl_vs_deposit = round(new_balance - self.initial_deposit, 2)
         self.session_pnl_trades = round(self.session_pnl_trades + cycle_pnl, 2)
 
-        # Verificacao de paridade contabil REAL (Trades da Sessão vs Delta Real na Carteira Safe + Cotas Pendentes)
+        # Verificacao de paridade contabil REAL (Trades da Sessão vs Delta Real na Carteira Safe + Cotas Pendentes da Sessão)
         if self.execution_mode != "paper":
             sol_impact = get_shared_wallet_sol_impact()
             # Desconta o impacto de operações do Desk 2 (SOL) que utilizam a mesma carteira Safe compartilhada
             btc_wallet_session_delta = round(wallet_session_delta - sol_impact, 2)
-            # Saldo efetivo reconciliado: variacao de USDC em carteira atribuível ao BTC + valor das cotas vencedoras aguardando redeem
-            effective_wallet_delta = round(btc_wallet_session_delta + self.pending_unredeemed_payouts, 2)
+            # Saldo efetivo reconciliado da sessão: variacao de USDC na sessão atribuível ao BTC + cotas pendentes da sessão
+            effective_wallet_delta = round(btc_wallet_session_delta + self.session_pending_unredeemed, 2)
             expected_balance_by_trades = round(self.session_initial_balance + self.session_pnl_trades, 2)
             parity_gap = abs(effective_wallet_delta - self.session_pnl_trades)
             if parity_gap > 1.50:
@@ -1599,25 +2132,22 @@ class LiveTrader:
                 print(f"       Variação USDC Total na Carteira:        {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
                 if abs(sol_impact) > 0.001:
                     print(f"       Impacto Isolado Desk 2 (SOL):           {sol_impact:+.2f} USDC")
-                print(f"       Cotas Pendentes de Resgate:             +${self.pending_unredeemed_payouts:.2f} USDC")
+                print(f"       Cotas Pendentes de Resgate da Sessão:   +${self.session_pending_unredeemed:.2f} USDC")
                 print(f"       Delta Efetivo Reconciliado BTC:         {effective_wallet_delta:+.2f} USDC")
                 if parity_gap > 3.50:
                     print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
                     self.is_halted = True
                     self.halt_reason = f"Divergência contábil de carteira (${parity_gap:.2f})"
-                    return
 
             # Travas de Drawdown Pós-Ciclo
             if new_balance < DRAWDOWN_FLOOR_USDC:
-                print(f"       [🚨 CIRCUIT BREAKER]: Saldo real (${new_balance:.2f}) atingiu o piso mínimo (${DRAWDOWN_FLOOR_USDC:.2f} USDC). Encerrando operações.")
+                print(f"       [🚨 CIRCUIT BREAKER]: Saldo real (${new_balance:.2f}) atingiu o piso mínimo (${DRAWDOWN_FLOOR_USDC:.2f} USDC). Encerrando operações após registro.")
                 self.is_halted = True
                 self.halt_reason = f"Piso absoluto de capital atingido (${new_balance:.2f} < ${DRAWDOWN_FLOOR_USDC:.2f})"
-                return
-            if btc_wallet_session_delta <= -MAX_SESSION_DRAWDOWN:
-                print(f"       [🚨 CIRCUIT BREAKER]: Drawdown da sessão (${btc_wallet_session_delta:.2f}) atingiu limite máximo (-${MAX_SESSION_DRAWDOWN:.2f} USDC). Encerrando operações.")
+            elif btc_wallet_session_delta <= -MAX_SESSION_DRAWDOWN:
+                print(f"       [🚨 CIRCUIT BREAKER]: Drawdown da sessão (${btc_wallet_session_delta:.2f}) atingiu limite máximo (-${MAX_SESSION_DRAWDOWN:.2f} USDC). Encerrando operações após registro.")
                 self.is_halted = True
                 self.halt_reason = f"Max session drawdown atingido (${btc_wallet_session_delta:.2f} <= -${MAX_SESSION_DRAWDOWN:.2f})"
-                return
 
         self.traded_windows.add(window_ts)
 
@@ -1673,6 +2203,8 @@ class LiveTrader:
                 "time_str": time_str,
                 "strike_chainlink": round(strike, 2),
                 "final_spot_chainlink": round(final_chainlink, 2),
+                "final_twap_chainlink": round(final_twap, 2),
+                "final_twap_delta": round(final_twap_delta, 2),
                 "target_side": target_side if (has_primary or sold_early) else None,
                 "winner": winner,
                 "winner_source": winner_source,

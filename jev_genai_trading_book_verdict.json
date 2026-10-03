@@ -1,0 +1,54 @@
+{
+  "timestamp": 1790696285.0792162,
+  "elapsed_sec": 0.37,
+  "q1_book_quality": {
+    "choice": "institutional_state_of_the_art",
+    "confidence": 0.92,
+    "probs": {
+      "institutional_state_of_the_art": 0.95,
+      "advanced_niche_survey": 0.02,
+      "commercial_fluff": 0.03
+    }
+  },
+  "q2_highest_value_insight": {
+    "choice": "hybrid_modeling_ood_veto",
+    "confidence": 1.0,
+    "probs": {
+      "hierarchical_risk_parity_and_cmda": 0.0,
+      "event_driven_fed_speech_nlp": 0.0,
+      "inference_efficiency_quantization_principle": 0.0,
+      "hybrid_modeling_ood_veto": 1.0
+    }
+  },
+  "q3_should_we_create_new_desks": {
+    "choice": "strictly_maintain_prediction_markets_focus",
+    "confidence": 0.62,
+    "probs": {
+      "create_fomc_speech_desk": 0.25,
+      "create_vix_futures_carry_desk": 0.0,
+      "strictly_maintain_prediction_markets_focus": 0.75
+    }
+  },
+  "q4_codebase_refinement": {
+    "choice": "integrate_ood_novelty_veto_gate",
+    "confidence": 0.94,
+    "probs": {
+      "no_code_change_needed": 0.04,
+      "deploy_heavy_diffusion_models": 0.0,
+      "integrate_ood_novelty_veto_gate": 0.96
+    }
+  },
+  "q5_what_to_avoid": {
+    "choice": "avoid_unquantized_heavy_models_in_realtime",
+    "confidence": 1.0,
+    "probs": {
+      "avoid_probabilistic_models": 0.0,
+      "avoid_unquantized_heavy_models_in_realtime": 1.0,
+      "avoid_kalshi_contracts": 0.0
+    }
+  },
+  "q6_scientific_score": {
+    "score": 3.0,
+    "confidence": 0.94
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790549627.1131103,
+  "elapsed_sec": 0.39,
+  "q1_sweet_spot_physics": {
+    "choice": "brownian_bridge_drift_dominance",
+    "confidence": 0.4,
+    "probabilities": {
+      "brownian_bridge_drift_dominance": 0.6,
+      "spurious_selection_bias": 0.38,
+      "institutional_execution_exhaustion": 0.02
+    }
+  },
+  "q2_diurnal_modulation": {
+    "choice": "implement_diurnal_modulation",
+    "confidence": 0.59,
+    "probabilities": {
+      "hybrid_volatility_zscore": 0.09,
+      "implement_diurnal_modulation": 0.72,
+      "maintain_fixed_scale_invariant_floor": 0.19
+    }
+  },
+  "q3_tbbo_gain_score": {
+    "score": 2.43,
+    "confidence": 0.49
+  },
+  "q4_cme_lead_lag_prob": {
+    "noul": 0.16
+  },
+  "q5_master_synthesis": {
+    "choice": "institutional_grade_certified",
+    "confidence": 0.75,
+    "probabilities": {
+      "restrict_to_us_session_only": 0.16,
+      "institutional_grade_certified": 0.84,
+      "expand_to_gold_live_immediately": 0.0
+    }
+  }
+}

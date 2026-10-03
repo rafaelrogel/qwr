@@ -1,0 +1,37 @@
+{
+  "timestamp": 1790331503.2749412,
+  "elapsed": 0.6912937164306641,
+  "q1_net_financial_verdict": {
+    "choice": "significantly_better",
+    "confidence": 1.0,
+    "probabilities": {
+      "worse": 0.0,
+      "significantly_better": 1.0,
+      "neutral_or_mixed": 0.0
+    }
+  },
+  "q2_whipsaw_prevention": {
+    "choice": "optimal_breathing_room",
+    "confidence": 1.0,
+    "probabilities": {
+      "too_tight": 0.0,
+      "optimal_breathing_room": 1.0,
+      "too_loose": 0.0
+    }
+  },
+  "q3_anti_ghost": {
+    "choice": "institutional_grade_execution",
+    "confidence": 1.0,
+    "probabilities": {
+      "superficial_fix": 0.0,
+      "institutional_grade_execution": 1.0
+    }
+  },
+  "q4_expected_value_score": {
+    "score": 3.07,
+    "confidence": 0.94
+  },
+  "q5_sustainability_prob": {
+    "noul": 0.8
+  }
+}

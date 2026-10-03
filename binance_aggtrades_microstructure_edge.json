@@ -1,0 +1,16 @@
+{
+  "total_trades_analyzed": 3000000,
+  "completed_5m_candles": 1856,
+  "wr_price_drift_alone_pct": 83.18,
+  "wr_ofi_alone_pct": 67.42,
+  "wr_concordant_price_and_ofi_pct": 84.29,
+  "divergent_cases_count": 86,
+  "divergent_price_win_pct": 82.56,
+  "divergent_flow_win_pct": 17.44,
+  "edge_lift_pct": 1.1,
+  "sample_files": [
+    "BTCUSDT-aggTrades-2026-08.zip",
+    "BTCUSDT-aggTrades-2026-07.zip",
+    "BTCUSDT-aggTrades-2026-06.zip"
+  ]
+}

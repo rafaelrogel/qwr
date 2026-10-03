@@ -1,0 +1,51 @@
+{
+  "timestamp": 1790633081.1047792,
+  "elapsed_sec": 0.42,
+  "results": {
+    "system_upgrades_verdict": {
+      "choice": "flawless_institutional_evolution",
+      "confidence": 0.6,
+      "probabilities": {
+        "unbalanced_complexity": 0.01,
+        "flawless_institutional_evolution": 0.74,
+        "moderate_positive_with_caution": 0.25
+      }
+    },
+    "desk12_weather_validity": {
+      "choice": "pure_deterministic_edge",
+      "confidence": 0.48,
+      "probabilities": {
+        "insufficient_liquidity": 0.03,
+        "oracle_latency_basis_risk": 0.31,
+        "pure_deterministic_edge": 0.66
+      }
+    },
+    "desk7_harrier_fee_math": {
+      "choice": "acceptable_approximation",
+      "confidence": 0.29,
+      "probabilities": {
+        "mathematically_watertight": 0.47,
+        "redundant": 0.0,
+        "acceptable_approximation": 0.53
+      }
+    },
+    "dataset_streaming_strategy": {
+      "choice": "optimal_data_engineering",
+      "confidence": 0.93,
+      "probabilities": {
+        "optimal_data_engineering": 0.95,
+        "selective_download_preferable": 0.05,
+        "full_download_required": 0.0
+      }
+    },
+    "whale_flow_alpha": {
+      "choice": "informative_secondary_signal",
+      "confidence": 0.79,
+      "probabilities": {
+        "high_conviction_alpha": 0.13,
+        "low_value_noise": 0.01,
+        "informative_secondary_signal": 0.86
+      }
+    }
+  }
+}

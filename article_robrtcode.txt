@@ -1,0 +1,367 @@
+<USER_REQUEST>
+Article
+See new posts
+Conversation
+[robert.](https://x.com/robrtcode)
+[@robrtcode](https://x.com/robrtcode)
+Analicé +100 bots de Polymarket que generan $50K/mes. Así obtienen ganancias en el mercado crypto.
+Cómo ganan más de 50.000$ al mes los bots de Polymarket en los mercados BTC Up or Down
+A simple vista, "BTC Up or Down 5m" parece uno de los mercados más simples de Polymarket:
+¿Terminará Bitcoin por encima o por debajo del precio registrado al inicio de la ventana de cinco minutos?
+Pero un bot rentable no intenta simplemente adivinar Up o Down.
+Está recalculando constantemente el precio de ambos resultados, midiendo la liquidez disponible y decidiendo si puede construir una posición por menos de lo que espera cobrar.
+Mientras un trader manual todavía está interpretando el último movimiento de BTC, un algoritmo puede haber hecho ya todo esto:
+→ recibido una actualización de precio externa
+→ recalculado el fair value de Up y Down
+→ revisado los mercados de 5m y 15m relacionados
+→ medido cuánto tamaño es realmente ejecutable
+→ cancelado órdenes límite obsoletas
+→ cambiado la estructura de su posición
+→ rechazado la operación porque violaba un límite de riesgo
+Usando Claude, analicé la actividad de más de 100 bots, cada uno generando más de 50.000$ de PnL mensual en los mercados cripto de corta duración de Polymarket.
+Link de la wallet: https://polymarket.com/@0xb55fa1296e6ec55d0ce53d93b9237389f11764d4-1777575277609?via=dan-kwpx
+Aunque sus estilos de ejecución difieren, casi todos estos sistemas siguen la misma cadena de decisión:
+datos de mercado → señal → fair value → edge ejecutable → estructura de posición → ejecución → riesgo
+Esto es lo que ocurre dentro de ese proceso.
+1. Dónde encuentran edge los bots en los mercados BTC Up or Down
+La principal ventaja de un bot no es que pueda predecir Bitcoin a la perfección.
+Es que puede reconocer cuándo el precio actual de un resultado ya no refleja las últimas condiciones del mercado.
+Imagina que BTC se mueve de repente por encima del precio de apertura en un mercado BTC Up or Down 5m activo.
+El movimiento ya ha ocurrido en un exchange externo, pero el CLOB de Polymarket puede seguir mostrando órdenes de venta de Up que se publicaron antes de que BTC se moviera.
+Hasta que esas órdenes se cancelen o se ejecuten, Up puede seguir disponible a un precio basado en información desactualizada.
+Esto crea un desfase temporal entre:
+→ lo que el resultado debería valer ahora
+→ y el precio que sigue disponible en el libro de órdenes
+Para medir ese desfase, un bot puede monitorizar:
+→ el precio actual de BTC respecto al precio de apertura de ese mercado concreto
+→ el movimiento del precio en los últimos segundos
+→ los segundos que quedan en la ventana de 5m o 15m
+→ el mejor bid, el mejor ask y el tamaño disponible en cada nivel
+→ el coste ejecutable combinado de cantidades iguales de Up y Down
+→ el precio medio de entrada de la posición que ya tiene abierta
+→ su inventario de Up o Down sin cubrir
+→ sus órdenes activas y cuánto tiempo llevan en el CLOB
+→ las diferencias entre el 5m actual, el siguiente 5m y el mercado de 15m
+→ la fuente de datos que Polymarket usará para resolver el mercado
+Esto va mucho más allá del análisis básico de gráficos.
+Link de la wallet: https://polymarket.com/@0xce25e214d5cfe4f459cf67f08df581885aae7fdc-1777575398144?via=dan-kwpx
+El bot está evaluando el precio del resultado, la calidad de la ejecución y el efecto que cada nuevo fill tendría sobre su inventario total.
+Un sistema en producción puede dividirse en cinco componentes principales:
+Capa de datos: recibe precios externos, actualizaciones del CLOB, operaciones recientes y el estado de las órdenes del propio bot.
+Motor de señales: convierte los cambios de precio, volumen y liquidez en variables numéricas.
+Modelo de pricing: calcula un fair value interno para Up y Down.
+Motor de ejecución: selecciona precios límite, tamaños de orden y el momento de las cancelaciones.
+Gestor de riesgo: controla la exposición, el drawdown, el desequilibrio de inventario y las posiciones correlacionadas.
+Una posible variable es el desequilibrio entre la liquidez visible del lado comprador y del lado vendedor del libro de órdenes.
+python
+def order_book_imbalance(bids, asks): total_bid_volume = sum(size for price, size in bids) total_ask_volume = sum(size for price, size in asks) visible_volume = total_bid_volume + total_ask_volume if visible_volume == 0: return 0.0 imbalance = ( total_bid_volume - total_ask_volume ) / visible_volume return imbalance bids = [ (0.46, 1200), (0.45, 850), (0.44, 600), ] asks = [ (0.47, 700), (0.48, 540), (0.49, 390), ] result = order_book_imbalance(bids, asks) print(f"Desequilibrio del libro: {result:.2%}")
+Esta métrica no predice cómo se resolverá el mercado.
+La liquidez visible puede desaparecer antes de la ejecución, y las órdenes grandes alejadas del mejor bid o ask puede que nunca lleguen a influir en el mercado.
+Por eso el desequilibrio del libro suele combinarse con el movimiento del activo subyacente, el flujo reciente de operaciones y el tiempo restante.
+Un sistema sólido no intenta operar cada movimiento. La mayoría de señales potenciales se descartan antes de que el bot envíe una sola orden.
+2. Cómo un evento de mercado se convierte en fair value
+Un humano puede describir un movimiento brusco de Bitcoin como alcista o bajista. Eso no es lo bastante preciso para un algoritmo.
+El bot necesita estimar cuánto debería cambiar una señal concreta la probabilidad de Up en este mercado exacto y con este tiempo restante exacto.
+Supón que Up cotiza a 43¢.
+BTC se mueve por encima del precio de apertura, aparecen compras agresivas en el mercado externo y siguen quedando órdenes de venta obsoletas en el CLOB de Polymarket.
+El bot no se pregunta:
+"¿Bitcoin parece fuerte ahora mismo?"
+Se pregunta:
+"¿Cuál debería ser la probabilidad de Up después de esta nueva información?"
+Para actualizar esa estimación se puede usar un modelo bayesiano.
+La probabilidad actualizada de Up es igual a la probabilidad de ver la señal actual cuando gana Up, multiplicada por la probabilidad previa de Up, y dividida entre la probabilidad ponderada combinada de ver esa señal tanto si gana Up como si gana Down.
+python
+def bayesian_fair_value( prior_up, signal_probability_if_up, signal_probability_if_down, ): weighted_up = ( prior_up * signal_probability_if_up ) weighted_down = ( (1 - prior_up) * signal_probability_if_down ) posterior_up = ( weighted_up / (weighted_up + weighted_down) ) return posterior_up prior_probability = 0.43 updated_probability = bayesian_fair_value( prior_up=prior_probability, signal_probability_if_up=0.66, signal_probability_if_down=0.39, ) print( f"Fair value previo: " f"{prior_probability:.2%}" ) print( f"Fair value actualizado: " f"{updated_probability:.2%}" )
+Supón que el modelo valoraba Up en un 43% antes del movimiento y que sube su fair value hasta aproximadamente un 56% tras procesar la señal.
+Si el mercado sigue ofreciendo Up a 43¢, la diferencia teórica es de 13 puntos porcentuales.
+Eso todavía no significa que el bot deba comprar de inmediato.
+El modelo puede estar contando el mismo evento subyacente varias veces.
+Por ejemplo, un movimiento brusco de BTC puede generar a la vez:
+→ mayor volumen de negociación
+→ una secuencia de compras agresivas a mercado
+→ más liquidez en el lado comprador
+→ un movimiento similar en ETH y SOL
+Parecen cuatro indicadores distintos, pero pueden ser todos consecuencia del mismo movimiento inicial.
+Tratarlos como confirmaciones independientes empujaría al modelo hacia un fair value irrealmente alto.
+Un sistema bien diseñado debe evaluar no solo la fuerza de cada señal, sino también cuánta información aporta de verdad más allá del resto de variables.
+3. El fair value y el PnL real no son lo mismo
+Supón que el modelo de pricing valora Up en 56¢ mientras la primera orden de venta disponible está a 47¢.
+A primera vista, parece un edge de nueve puntos porcentuales.
+Pero el bot no puede tratar toda esa diferencia como beneficio.
+Todavía tiene que descontar:
+→ las comisiones de trading
+→ el spread entre bid y ask
+→ el slippage esperado
+→ peores precios a mayor tamaño
+→ el riesgo de fills parciales
+→ la incertidumbre del propio modelo de fair value
+El edge neto es igual al fair value menos el precio medio de ejecución esperado, las comisiones, el slippage y un margen adicional de seguridad.
+python
+def calculate_executable_edge( fair_value, expected_fill_price, trading_fee, expected_slippage, safety_buffer, ): gross_edge = ( fair_value - expected_fill_price ) net_edge = ( gross_edge - trading_fee - expected_slippage - safety_buffer ) return gross_edge, net_edge gross, net = calculate_executable_edge( fair_value=0.56, expected_fill_price=0.47, trading_fee=0.012, expected_slippage=0.006, safety_buffer=0.010, ) print(f"Edge bruto: {gross:.2%}") print(f"Edge neto: {net:.2%}")
+Después de estos descuentos, una diferencia bruta de nueve puntos puede quedarse en solo cinco o seis.
+El bot debe entonces inspeccionar la profundidad del libro de órdenes.
+Las primeras 100 shares pueden estar disponibles a 47¢, las siguientes 300 a 49¢ y el tamaño restante a 51¢.
+Eso significa que la operación debe evaluarse con el precio medio de ejecución ponderado por volumen, no con el mejor ask que aparece arriba del libro.
+El mismo principio aplica al arbitraje binario.
+Una oportunidad de arbitraje solo existe cuando se pueden adquirir por completo cantidades iguales de Up y Down por menos de 1$ después de todos los costes de ejecución.
+Por ejemplo:
+Up disponible a 46¢
+Down disponible a 48¢
+coste combinado del par: 94¢
+pago tras la resolución: 1$
+El margen teórico es de 6¢ por cada par emparejado.
+Pero si el tamaño necesario de Down se acaba ejecutando a una media de 53¢, el coste real del par pasa a ser de 99¢ antes de comisiones.
+Un backtest puede identificar una oportunidad atractiva en una captura histórica del libro de órdenes.
+Un bot en vivo tiene que demostrar que el precio mostrado era realmente ejecutable.
+El modelo identifica el valor potencial. La ejecución determina si el bot puede capturarlo.
+Link de la wallet: https://polymarket.com/@bonereaper?via=dan-kwpx
+4. Por qué el edge suele aparecer entre los mercados de 5m y 15m
+El mismo movimiento de BTC puede afectar a varios mercados relacionados a la vez:
+el mercado BTC Up or Down 5m actual
+la siguiente ventana de cinco minutos
+BTC Up or Down 15m
+los mercados de corta duración de ETH y SOL
+mercados con horarios de resolución cercanos
+Pero estos mercados no ajustan sus precios necesariamente a la misma velocidad.
+Cada uno tiene diferente:
+precio de apertura
+tiempo restante
+perfil de liquidez
+grupo de participantes activos
+distribución de órdenes límite en reposo
+probabilidad de ejecutarse al precio mostrado
+Supón que BTC sube con fuerza.
+El mercado de 5m actual ajusta rápidamente Up de 51¢ a 72¢, mientras que el de 15m sigue cotizando cerca de 55¢.
+Eso no significa automáticamente que el Up del 15m esté infravalorado.
+El mercado de 15m tiene un precio de apertura distinto y más tiempo por delante hasta la resolución.
+El bot primero calcula un fair value independiente para cada mercado y solo después compara el tamaño de sus desviaciones.
+Se puede usar un z-score para identificar una relación inusualmente amplia entre mercados conectados.
+El z-score es igual al spread actual entre dos mercados relacionados menos su media histórica, dividido entre la desviación estándar histórica de ese spread.
+python
+def cross_market_zscore( current_spread, average_spread, spread_standard_deviation, ): if spread_standard_deviation <= 0: raise ValueError( "La desviación estándar debe ser positiva" ) zscore = ( current_spread - average_spread ) / spread_standard_deviation return zscore z = cross_market_zscore( current_spread=0.091, average_spread=0.034, spread_standard_deviation=0.020, ) print(f"Z-score entre mercados: {z:.2f}")
+Un z-score alto indica que la relación se ha salido mucho de su rango normal.
+El modelo entonces necesita determinar por qué:
+→ puede que un mercado todavía no haya ajustado su precio
+→ puede que otro mercado haya sobrerreaccionado
+→ puede que la liquidez haya desaparecido en un solo CLOB
+→ puede que los distintos precios de apertura justifiquen por completo la diferencia
+El sistema sigue varios fair values conectados y reacciona cuando el precio de un resultado empieza a cotizar fuera de la estructura que implica el resto.
+5. Cinco formas en que los bots convierten el edge en PnL
+Una vez identificada una discrepancia de precios, el bot debe elegir no solo qué resultado operar, sino también cómo estructurar la posición.
+Hay cinco modelos que se repiten en los sistemas rentables.
+1. Arbitraje temporal
+El arbitraje binario tradicional aparece cuando se pueden comprar cantidades iguales de Up y Down al mismo tiempo por menos de 1$.
+El arbitraje temporal construye los dos lados en momentos distintos.
+Supón que BTC sube y Down cae a 29¢. El bot compra gradualmente 500 shares de Down.
+Varios minutos después, BTC vuelve hacia el precio de apertura y ahora se puede acumular Up a un precio medio de 51¢.
+La posición final queda así:
+500 Down a 29¢
+500 Up a 51¢
+coste por par emparejado: 80¢
+pago tras la resolución: 1$
+Los dos precios nunca estuvieron disponibles a la vez.
+El bot construyó el arbitraje a través de dos estados de mercado distintos.
+Riesgo principal: puede que el segundo resultado nunca llegue a estar lo bastante barato.
+Después de comprar Down, BTC podría seguir subiendo hasta el final de la ventana. El bot se quedaría entonces con inventario de Down sin cubrir en lugar de un par protegido.
+Los sistemas más conservadores construyen la estructura en bloques más pequeños: primero 50 Down, luego 50 Up, y solo aumentan el tamaño cuando el primer par está completo.
+2. Posición direccional cubierta
+Este modelo combina una base protegida con un pequeño desequilibrio direccional.
+Supón que el bot tiene:
+→ 310 Up
+→ 286 Down
+De ahí, 286 Up y 286 Down forman el inventario emparejado. Las 24 shares de Up restantes crean la exposición direccional.
+Si el mercado se resuelve en Up, las shares adicionales aumentan el pago. Si gana Down, la mayor parte de la posición queda protegida.
+El tamaño del desequilibrio puede ir cambiando a medida que cambia el fair value:
+señal de Up más fuerte: añadir más Up
+señal más débil: reducir Up
+más riesgo: añadir más Down
+sin edge restante: reequilibrar la posición
+Riesgo principal: el inventario emparejado puede salir demasiado caro.
+Si el precio medio de Up es 54¢ y el de Down es 49¢, cada par protegido cuesta 1,03$ pero solo puede devolver 1$.
+El exceso direccional primero tiene que recuperar ese déficit antes de que la posición completa sea rentable.
+3. Market making de inventario
+Un bot de inventario gestiona el capital entre varios mercados en lugar de tratar cada operación como una posición aislada.
+Puede operar a la vez:
+BTC Up or Down 5m
+BTC Up or Down 15m
+ETH Up or Down 5m
+SOL Up or Down 15m
+Up y Down en ventanas contiguas
+Para cada mercado, el sistema monitoriza:
+el coste medio de Up
+el coste medio de Down
+el número de shares emparejadas
+el exceso direccional
+el colateral disponible
+la liquidez disponible para salir
+Supón que Down se convierte en el favorito claro y sube a 98¢.
+En lugar de esperar a la resolución, el bot puede vender parte de su inventario de Down a 98¢, liberar capital de inmediato y quedarse solo con la posición principal.
+También puede usar una pequeña parte del capital liberado para comprar Up a 2¢ como protección barata frente a un movimiento extremo en el último segundo.
+Riesgo principal: un inventario direccionalmente neutro también puede perder dinero.
+Si ambos resultados se acumularon a un coste medio combinado por encima de 1$, el pago de la liquidación no puede cubrir el coste de la posición emparejada.
+4. Captura cerca de la resolución
+Estos bots entran poco antes de que el mercado se resuelva.
+Cuando el resultado parece casi seguro, el lado ganador todavía puede estar disponible a 98-99¢.
+El bot compra la liquidez restante y espera el pago de 1$.
+Ejemplo:
+precio de entrada: 98,8¢
+valor de resolución: 1$
+beneficio bruto: 1,2¢ por share
+El retorno por operación es pequeño, así que la estrategia depende de una rotación alta y de un conocimiento extremadamente preciso de la mecánica de resolución del mercado.
+Riesgo principal: una pérdida puntual es mucho mayor que una ganancia normal.
+Una sola compra equivocada a 99¢ puede borrar el beneficio de decenas de operaciones exitosas de 1¢ cada una.
+Las causas posibles incluyen:
+un movimiento del activo subyacente en el último segundo
+monitorizar el feed de precios equivocado
+usar un precio de apertura incorrecto
+malinterpretar las reglas de resolución
+no cancelar una orden límite a tiempo
+Un win rate alto no convierte esta estrategia en una de bajo riesgo.
+5. Rotación dinámica de posiciones
+Un bot de rotación no necesita mantener su resultado original hasta la resolución.
+Supón que el modelo considera al principio que Up está infravalorado en un mercado BTC Up or Down 5m y empieza a acumular Up.
+BTC vuelve entonces hacia el precio de apertura, aumenta la presión vendedora y el modelo baja su fair value para Up.
+El algoritmo puede:
+cancelar sus órdenes de compra de Up que siguen activas
+vender parte de la posición de Up existente
+empezar a acumular Down
+volver a rotar si aparece otra señal fuerte
+El objetivo no es elegir el resultado correcto una vez y comprometerse con él.
+El bot intenta mantener más exposición al lado que ofrece el edge neto más fuerte en cada momento.
+Riesgo principal: rotar en exceso.
+En un mercado con mucho ruido, el sistema puede cambiar una y otra vez entre Up y Down, pagando spread y slippage cada vez.
+Una nueva señal debe ser lo bastante fuerte como para cubrir el coste de reducir la posición antigua y construir la nueva.
+Link de la wallet: https://polymarket.com/@uuddlrlr?via=dan-kwpx
+6. Por qué la ejecución puede importar más que la señal
+Supón que el bot encuentra Up y Down disponibles por un coste combinado de 95¢ y envía ambas órdenes.
+Up se ejecuta por completo.
+Antes de que se ejecute la orden de Down, el libro cambia, las órdenes de venta desaparecen y Down ahora cuesta 57¢.
+El arbitraje ya no existe. Pero el bot ya tiene inventario abierto de Up. El fallo no vino del modelo de fair value. Vino de una ejecución incompleta.
+El sistema ahora necesita decidir:
+→ cuánto tiempo esperar por la segunda pata
+→ con qué rapidez mover su precio límite
+→ cuánto tamaño sin cubrir es aceptable
+→ cuándo seguir actuando como maker
+→ cuándo usar ejecución taker
+→ cuándo cerrar la primera pata en pérdidas
+Se puede usar un precio de reserva ajustado por inventario para modificar el comportamiento de cotización del bot.
+El precio de reserva es igual al fair value menos el desequilibrio de inventario multiplicado por la aversión al riesgo, la volatilidad al cuadrado y el tiempo restante.
+Si el bot ya tiene demasiado Up, el precio máximo que está dispuesto a pagar por más Up debería bajar.
+Al mismo tiempo, puede subir su bid por Down para reducir el desequilibrio más rápido.
+El tipo de orden también afecta a la ejecución:
+GTC permanece activa en el CLOB hasta que se ejecuta o se cancela.
+GTD expira automáticamente en un momento determinado.
+FOK debe ejecutarse por completo y de inmediato o se cancela la orden entera.
+FAK toma el tamaño disponible y cancela el resto sin ejecutar.
+Post-only garantiza que la orden añade liquidez en lugar de ejecutarse de inmediato como taker.
+La mayoría de bots reparten el tamaño que quieren ejecutar entre varias órdenes límite.
+Esto les permite:
+controlar su precio medio de ejecución
+retirar órdenes obsoletas
+reducir tamaño cuando el edge se debilita
+evitar mostrar toda su posición prevista en una sola orden
+Pero la ejecución pasiva no siempre es mejor.
+Cuando el mercado está ajustando precios rápido, intentar ahorrar 1¢ con una orden maker puede hacer que la oportunidad entera desaparezca.
+El motor de ejecución debe equilibrar constantemente la mejora de precio frente a la probabilidad de conseguir el fill antes de que el edge se esfume.
+7. La gestión del riesgo y el backtesting determinan cuánto sobrevive el bot
+Ni siquiera un edge neto grande justifica arriesgar todo el bankroll.
+El trading en vivo siempre incluye escenarios que no se pueden eliminar del todo:
+el fair value puede estar mal
+la liquidez puede desaparecer
+un lado de la estructura puede no ejecutarse
+varios mercados pueden moverse contra el bot a la vez
+un feed de precios externo puede ir con retraso
+la API puede devolver datos obsoletos
+Se puede usar Kelly fraccional como punto de partida para dimensionar posiciones.
+El Kelly fraccional usa solo un porcentaje elegido de la asignación completa de Kelly, que se calcula a partir de la probabilidad de ganar, la probabilidad de perder y el pago neto respecto al capital en riesgo.
+python
+def fractional_kelly_size( win_probability, entry_price, kelly_fraction=0.25, ): if not 0 < entry_price < 1: raise ValueError( "El precio de entrada debe estar entre 0 y 1" ) loss_probability = ( 1 - win_probability ) net_odds = ( 1 - entry_price ) / entry_price full_kelly = ( net_odds * win_probability - loss_probability ) / net_odds fractional_size = ( full_kelly * kelly_fraction ) return max(fractional_size, 0.0) position_size = fractional_kelly_size( win_probability=0.60, entry_price=0.49, kelly_fraction=0.25, ) print( f"Asignación del bankroll: " f"{position_size:.2%}" )
+Usar el 25% del Kelly completo, por ejemplo, reduce la dependencia de la estrategia de cualquier estimación de probabilidad concreta.
+Después se aplican límites duros:
+tamaño máximo por mercado
+exposición máxima a BTC, ETH o SOL
+inventario máximo sin cubrir
+límite de pérdida diaria
+número máximo de posiciones correlacionadas
+kill switch automático cuando la calidad de los datos se deteriora
+BTC Up or Down 5m y BTC Up or Down 15m pueden parecer mercados separados.
+Sin embargo, durante un movimiento fuerte de BTC, ambas posiciones pueden representar la misma exposición direccional.
+Lo mismo aplica a ETH y SOL si todo el mercado cripto empieza a moverse a la vez.
+Antes de pasar a producción, la estrategia debería probarse con backtesting o paper trading que incluya:
+→ comisiones
+→ spread realista
+→ slippage
+→ fills parciales
+→ latencia de ejecución
+→ órdenes canceladas
+→ drawdown máximo
+Una estrategia que solo gana dinero cuando todas las órdenes se ejecutan al mejor precio visible no está lista para producción.
+Por qué la misma estrategia rinde distinto para un humano y para un bot
+Incluso cuando un trader manual entiende la estructura del mercado, siguen existiendo varias limitaciones de ejecución:
+Entradas tardías: el mercado puede ajustar su precio antes de que el trader confirme el movimiento y envíe la orden.
+Tamaño emocional: el tamaño de la posición suele basarse en la confianza subjetiva y no en el valor esperado.
+Fatiga: la velocidad y la calidad de las decisiones caen después de horas monitorizando mercados similares.
+Reacciones al drawdown: tras una racha perdedora, un trader puede abandonar una estrategia válida o aumentar el riesgo para recuperar las pérdidas rápido.
+La automatización no convierte un mal modelo en uno rentable.
+Simplemente aplica las mismas reglas de tamaño, ejecución y apagado en cada ciclo de trading.
+Link de la wallet: https://polymarket.com/@aswfadq1555?via=dan-kwpx
+8. Cómo es el stack completo de un bot de Polymarket
+Un bot en producción normalmente se puede dividir en seis capas.
+Capa 1. Datos
+Precios cripto externos, el feed de resolución, los libros de órdenes del CLOB, operaciones recientes, órdenes activas y fills.
+Capa 2. Señales
+Momentum de precio, volatilidad, desequilibrio del libro de órdenes, flujo de operaciones y desviaciones entre mercados relacionados.
+Capa 3. Pricing
+Fair values independientes para Up y Down basados en el precio de apertura y el tiempo restante.
+Capa 4. Lógica de posición
+Arbitraje temporal, posición direccional cubierta, market making de inventario, captura cerca de la resolución o rotación dinámica de posiciones.
+Capa 5. Ejecución y riesgo
+Órdenes límite, gestión de fills incompletos, dimensionado de posiciones, límites de exposición y kill switches.
+Capa 6. Research
+Backtesting, paper trading, reconstrucción de ciclos completos de trading y análisis de las ejecuciones fallidas.
+Claude y otros modelos de IA se pueden usar dentro de la capa de research para:
+analizar operaciones históricas
+identificar patrones recurrentes
+escribir código de backtesting
+agrupar fills individuales en posiciones
+investigar las causas de las operaciones perdedoras
+Pero el loop de trading en vivo debería funcionar según una lógica predefinida.
+python
+async def run_polymarket_bot(): while True: market_state = await receive_market_data() features = build_market_features( market_state ) fair_values = estimate_fair_values( market_state, features, ) opportunity = find_executable_edge( market_state, fair_values, ) if opportunity is None: continue position_plan = choose_position_structure( market_state, opportunity, ) order_plan = build_execution_plan( market_state, position_plan, ) approved = risk_manager_approves( market_state, order_plan, ) if approved: await submit_orders(order_plan)
+En producción, el sistema no debería inventarse una estrategia nueva después de cada actualización del mercado.
+Su trabajo es mucho más simple:
+recibir datos → calcular → comprobar riesgo → enviar órdenes
+Conclusión
+Los bots que generan más de 50.000$ de PnL mensual en los mercados de corta duración de Polymarket no ganan dinero simplemente eligiendo bien entre Up o Down.
+Combinan varias ventajas:
+actualizaciones de fair value más rápidas
+pricing basado en el tamaño ejecutable y no en la parte alta del libro
+detección de dislocaciones entre los mercados de 5m y 15m
+selección de la estructura de posición correcta
+gestión de los fills incompletos
+control del inventario y de la exposición correlacionada
+límites estrictos en el tamaño de las operaciones
+apagado automático cuando los datos o la ejecución dejan de ser fiables
+Algunos algoritmos adquieren Up y Down en momentos distintos. Otros construyen inventario emparejado con un pequeño exceso direccional. Algunos redistribuyen capital entre varios mercados, operan cerca de la resolución o rotan entre resultados varias veces dentro de la misma ventana.
+Pero la fórmula central es siempre la misma:
+**datos precisos
+fair value independiente
+edge después de costes
+ejecución eficiente
+límites de riesgo estrictos
+Estos bots no saben de antemano dónde va a terminar Bitcoin dentro de cinco minutos.
+Simplemente son más rápidos calculando lo que Up y Down deberían valer ahora mismo.
+Want to publish your own Article?
+[Upgrade to Premium](https://x.com/i/premium_sign_up)
+[5:54 AM · Jul 13, 2026](https://x.com/robrtcode/status/2076530642142089501)
+·
+[554.5K Views](https://x.com/robrtcode/status/2076530642142089501/analytics)
+Relevant
+[View quotes](https://x.com/robrtcode/status/2076530642142089501/quotes)
+
+
+Leia este artigo, algo que a gente possa usar pro nosso code? relfita, envie também ao jev para ver o que ele diz
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-26T17:30:13+01:00.
+</ADDITIONAL_METADATA>

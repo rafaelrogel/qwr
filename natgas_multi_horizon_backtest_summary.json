@@ -1,0 +1,38 @@
+{
+  "weekly_eia": {
+    "period": "2013-2026 (13 anos)",
+    "trades": 443,
+    "wins": 301,
+    "losses": 142,
+    "win_rate_pct": 67.95,
+    "net_pnl_usd": 3397.08,
+    "roi_pct": 339.71,
+    "profit_factor": 1.96,
+    "max_drawdown_pct": -7.78,
+    "sharpe_ratio": 2.46
+  },
+  "daily_harvest": {
+    "period": "2018-2026 (8 anos)",
+    "trades": 2173,
+    "wins": 1805,
+    "losses": 368,
+    "win_rate_pct": 83.06,
+    "net_pnl_usd": -364.61,
+    "roi_pct": -36.46,
+    "profit_factor": 0.96,
+    "max_drawdown_pct": -78.07,
+    "sharpe_ratio": -0.23
+  },
+  "intraday_15m": {
+    "period": "1.000 ciclos intradi\u00e1rios (calibrado com 16 ciclos reais a 93.8% WR)",
+    "trades": 1000,
+    "wins": 881,
+    "losses": 119,
+    "win_rate_pct": 88.1,
+    "net_pnl_usd": 3676.21,
+    "roi_pct": 367.62,
+    "profit_factor": 4.82,
+    "max_drawdown_pct": -1.67,
+    "sharpe_ratio": 53.11
+  }
+}

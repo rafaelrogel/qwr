@@ -1,0 +1,59 @@
+{
+  "strategic_action_verdict": {
+    "verdict": "STICK_STRICTLY_TO_ETH_AND_GOLD",
+    "confidence": 1.0,
+    "probabilities": {
+      "STICK_STRICTLY_TO_ETH_AND_GOLD": 1.0,
+      "ADD_ETH_15M_KALSHI_ONLY": 0.0,
+      "ADD_XRP_ONLY": 0.0,
+      "ADD_ALL_FIVE": 0.0
+    }
+  },
+  "xrp_5m_verdict": {
+    "verdict": "REJECT_PREDATORY_SPREAD",
+    "confidence": 1.0,
+    "probabilities": {
+      "STANDBY_IF_LIQUIDITY_IMPROVES": 0.0,
+      "APPROVE_NOW": 0.0,
+      "REJECT_PREDATORY_SPREAD": 1.0
+    }
+  },
+  "doge_5m_verdict": {
+    "verdict": "REJECT_MEMECOIN_ILLIQUID",
+    "confidence": 1.0,
+    "probabilities": {
+      "REJECT_MEMECOIN_ILLIQUID": 1.0,
+      "APPROVE_NOW": 0.0,
+      "STANDBY": 0.0
+    }
+  },
+  "kalshi_eth15m_verdict": {
+    "verdict": "REJECT_REDUNDANT_AND_ILLIQUID",
+    "confidence": 1.0,
+    "probabilities": {
+      "STANDBY": 0.0,
+      "REJECT_REDUNDANT_AND_ILLIQUID": 1.0,
+      "APPROVE_AS_COMPLEMENT": 0.0
+    }
+  },
+  "kalshi_wti_ndq_verdict": {
+    "verdict": "REJECT_CLOSED_OR_NOISY",
+    "confidence": 1.0,
+    "probabilities": {
+      "APPROVE_IMMEDIATELY": 0.0,
+      "REJECT_CLOSED_OR_NOISY": 1.0,
+      "APPROVE_FOR_WEEKDAYS": 0.0
+    }
+  },
+  "portfolio_sufficiency_score": {
+    "score": 1.81,
+    "confidence": 0.0,
+    "probabilities": {
+      "0": 0.2,
+      "1": 0.19,
+      "2": 0.26,
+      "3": 0.31,
+      "4": 0.04
+    }
+  }
+}

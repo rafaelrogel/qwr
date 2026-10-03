@@ -1,0 +1,54 @@
+{
+  "timestamp": 1790712937.8653605,
+  "elapsed_sec": 0.34,
+  "q1_cabbage_verdict": {
+    "choice": "thin_wrapper_over_framework",
+    "confidence": 1.0,
+    "probs": {
+      "advanced_algorithmic_bot": 0.0,
+      "unusable_broken_code": 0.0,
+      "thin_wrapper_over_framework": 1.0
+    }
+  },
+  "q2_upstream_framework_value": {
+    "choice": "valuable_infrastructure_for_traditional_markets",
+    "confidence": 1.0,
+    "probs": {
+      "completely_useless": 0.0,
+      "valuable_infrastructure_for_traditional_markets": 1.0,
+      "superior_to_agy_for_prediction_markets": 0.0
+    }
+  },
+  "q3_can_we_port_features": {
+    "choice": "port_dashboard_and_confluence_concept",
+    "confidence": 1.0,
+    "probs": {
+      "adopt_entire_framework": 0.0,
+      "reject_completely_zero_takeaway": 0.0,
+      "port_dashboard_and_confluence_concept": 1.0,
+      "adopt_cabbage_rsi_ema_strategy": 0.0
+    }
+  },
+  "q4_should_we_create_new_desk": {
+    "choice": "strictly_do_not_create_cabbage_desk",
+    "confidence": 1.0,
+    "probs": {
+      "strictly_do_not_create_cabbage_desk": 1.0,
+      "create_cabbage_live_desk": 0.0,
+      "create_cabbage_spot_paper_desk": 0.0
+    }
+  },
+  "q5_backtesting_evaluation": {
+    "choice": "high_quality_dual_engine",
+    "confidence": 0.95,
+    "probs": {
+      "standard_generic": 0.0,
+      "flawed_and_misleading": 0.03,
+      "high_quality_dual_engine": 0.97
+    }
+  },
+  "q6_scientific_score": {
+    "score": 0.02,
+    "confidence": 0.98
+  }
+}

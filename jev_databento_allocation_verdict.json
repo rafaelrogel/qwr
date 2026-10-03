@@ -1,0 +1,41 @@
+{
+  "timestamp": 1790548342.9396422,
+  "elapsed_sec": 0.33,
+  "q1_optimal_asset": {
+    "choice": "nymex_natgas_priority",
+    "confidence": 0.92,
+    "probabilities": {
+      "multi_asset_portfolio_approach": 0.03,
+      "nymex_natgas_priority": 0.94,
+      "cme_emini_spx_priority": 0.03,
+      "opra_options_gex_priority": 0.0
+    }
+  },
+  "q2_optimal_schema": {
+    "choice": "tbbo_plus_ohlcv_1s_hybrid",
+    "confidence": 1.0,
+    "probabilities": {
+      "pure_mbp_10_recent_window": 0.0,
+      "tbbo_plus_ohlcv_1s_hybrid": 1.0,
+      "pure_mbo_event_sniper": 0.0,
+      "pure_ohlcv_1s_decade": 0.0
+    }
+  },
+  "q3_natgas_gain_score": {
+    "score": 3.0,
+    "confidence": 0.92
+  },
+  "q4_spx_lead_lag_prob": {
+    "noul": 0.66
+  },
+  "q5_recommended_plan": {
+    "choice": "execute_targeted_ng_es_extraction",
+    "confidence": 0.83,
+    "probabilities": {
+      "execute_targeted_ng_es_extraction": 0.87,
+      "reserve_credits_for_live_streaming": 0.01,
+      "all_in_spx_high_beta": 0.0,
+      "all_in_natgas_live_desk": 0.12
+    }
+  }
+}

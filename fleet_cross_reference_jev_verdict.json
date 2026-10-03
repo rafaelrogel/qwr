@@ -1,0 +1,27 @@
+{
+  "instance_lock_urgency": {
+    "choice": "urgent_mandatory",
+    "score": null,
+    "noul": null
+  },
+  "anti_sweep_expansion": {
+    "choice": "highly_recommended",
+    "score": null,
+    "noul": null
+  },
+  "cross_pollination_priority": {
+    "choice": "desk2_adopting_instance_lock",
+    "score": null,
+    "noul": null
+  },
+  "fleet_code_cohesion_score": {
+    "choice": null,
+    "score": 1.3,
+    "noul": null
+  },
+  "final_synthesis": {
+    "choice": null,
+    "score": null,
+    "noul": 0.6
+  }
+}

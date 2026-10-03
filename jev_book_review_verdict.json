@@ -1,0 +1,45 @@
+{
+  "timestamp": 1790693740.1240733,
+  "elapsed_sec": 0.29,
+  "q1_utility": {
+    "choice": "selective_component_extraction",
+    "confidence": 1.0,
+    "probs": {
+      "total_rejection_retail_fluff": 0.0,
+      "selective_component_extraction": 1.0,
+      "direct_implementation_as_new_desk": 0.0
+    }
+  },
+  "q2_best_concept": {
+    "choice": "pmax_adaptive_trailing_deadband",
+    "confidence": 0.63,
+    "probs": {
+      "none_worth_incorporating": 0.03,
+      "pmax_adaptive_trailing_deadband": 0.72,
+      "qqe_mod_volatility_exhaustion": 0.25,
+      "vwma_volume_weighted_drift": 0.0
+    }
+  },
+  "q3_what_to_reject": {
+    "choice": "reject_naive_ma_crossovers_and_nocode",
+    "confidence": 0.8,
+    "probs": {
+      "reject_all_of_the_above": 0.13,
+      "reject_naive_ma_crossovers_and_nocode": 0.87,
+      "reject_rsi_oversold_scalping": 0.0
+    }
+  },
+  "q4_recommendation": {
+    "choice": "enhance_existing_deadbands_with_atr_filter",
+    "confidence": 0.99,
+    "probs": {
+      "enhance_existing_deadbands_with_atr_filter": 1.0,
+      "create_new_desk_desk13": 0.0,
+      "do_not_touch_anything": 0.0
+    }
+  },
+  "q5_quality_score": {
+    "score": 0.84,
+    "confidence": 0.84
+  }
+}

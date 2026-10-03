@@ -1,0 +1,11 @@
+{
+  "timestamp": 1790450753.8911126,
+  "elapsed_sec": 0.32,
+  "decision": "START_IN_PAPER_MODE",
+  "confidence": 0.99,
+  "probabilities": {
+    "DO_NOT_LAUNCH": 0.0,
+    "START_IN_LIVE_MODE": 0.0,
+    "START_IN_PAPER_MODE": 1.0
+  }
+}

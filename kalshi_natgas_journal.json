@@ -9,7 +9,188 @@
   "win_rate_pct": 0.0,
   "total_pnl": 0.0,
   "open_position": null,
-  "vetoed_by_jev_count": 0,
+  "vetoed_by_jev_count": 20,
   "trade_history": [],
-  "jev_audit_log": []
+  "jev_audit_log": [
+    {
+      "timestamp_et": "2026-09-30 14:01:11",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.5,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.28,
+      "jev_score": 1.88
+    },
+    {
+      "timestamp_et": "2026-09-30 14:16:13",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.5,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.38,
+      "jev_score": 1.92
+    },
+    {
+      "timestamp_et": "2026-09-30 14:31:14",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.5,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.94
+    },
+    {
+      "timestamp_et": "2026-09-30 14:46:14",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.5,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.95
+    },
+    {
+      "timestamp_et": "2026-09-30 15:01:15",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.3,
+      "jev_score": 1.91
+    },
+    {
+      "timestamp_et": "2026-09-30 15:16:16",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.33,
+      "jev_score": 1.92
+    },
+    {
+      "timestamp_et": "2026-09-30 15:31:17",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.27,
+      "jev_score": 1.91
+    },
+    {
+      "timestamp_et": "2026-09-30 15:46:19",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.87
+    },
+    {
+      "timestamp_et": "2026-09-30 16:01:20",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.29,
+      "jev_score": 1.88
+    },
+    {
+      "timestamp_et": "2026-09-30 16:16:21",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -7.6,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.3,
+      "jev_score": 1.85
+    },
+    {
+      "timestamp_et": "2026-09-30 16:31:22",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.1,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.32,
+      "jev_score": 1.91
+    },
+    {
+      "timestamp_et": "2026-09-30 16:46:23",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.1,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.29,
+      "jev_score": 1.89
+    },
+    {
+      "timestamp_et": "2026-09-30 17:01:23",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.1,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.35,
+      "jev_score": 1.88
+    },
+    {
+      "timestamp_et": "2026-09-30 17:16:24",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.1,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.87
+    },
+    {
+      "timestamp_et": "2026-09-30 17:31:37",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.1,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.32,
+      "jev_score": 1.87
+    },
+    {
+      "timestamp_et": "2026-09-30 17:46:39",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.2,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.84
+    },
+    {
+      "timestamp_et": "2026-09-30 18:01:40",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.2,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.33,
+      "jev_score": 1.92
+    },
+    {
+      "timestamp_et": "2026-09-30 18:16:40",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.2,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.28,
+      "jev_score": 1.81
+    },
+    {
+      "timestamp_et": "2026-09-30 18:31:41",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.2,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.37,
+      "jev_score": 1.83
+    },
+    {
+      "timestamp_et": "2026-09-30 18:46:42",
+      "physical_signal": "BUY BULLISH",
+      "expected_deviation": -8.3,
+      "jev_approved": false,
+      "jev_choice": "veto_insufficient_edge",
+      "jev_confidence": 0.31,
+      "jev_score": 1.9
+    }
+  ]
 }

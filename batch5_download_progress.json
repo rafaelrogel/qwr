@@ -1,0 +1,12 @@
+{
+  "batch": "BATCH_5_100GB_BOOKTICKER",
+  "status": "COMPLETED",
+  "timestamp": 1790480885.219745,
+  "total_downloaded_bytes": 103195072083,
+  "total_downloaded_gb": 96.108,
+  "max_limit_gb": 98.0,
+  "progress_pct": 98.07,
+  "files_downloaded": 29,
+  "speed_mb_s": 0.0,
+  "current_file": "FINISHED"
+}

@@ -36,6 +36,8 @@ if sys.platform == "win32":
 from dotenv import load_dotenv
 load_dotenv()
 
+from risk_gate import is_system_halted, atomic_write_json, safe_read_json, get_desk_mode, check_fat_tail_safety_gate
+
 try:
     from typesafe_sdk import TypeSafeClient, Choice, Score, Noul
     JEV_SDK_AVAILABLE = True
@@ -55,9 +57,11 @@ MAX_KALSHI_POSITIONS = int(os.getenv("DESK6_MAX_KALSHI_POS", "5")) # Max 5 na Ka
 MAX_ACTIVE_POSITIONS = MAX_POLY_POSITIONS + MAX_KALSHI_POSITIONS   # 10 no Total
 MAX_TOTAL_EXPOSURE = FIXED_STAKE * MAX_ACTIVE_POSITIONS            # Teto $10.00
 SCAN_INTERVAL_SEC = int(os.getenv("DESK6_INTERVAL", "1800")) # 30 minutos
-MIN_PRICE = float(os.getenv("DESK6_MIN_PRICE", "0.965"))     # 96.5¢
-MAX_PRICE = float(os.getenv("DESK6_MAX_PRICE", "0.992"))     # 99.2¢
-MAX_EXPIRY_DAYS = float(os.getenv("DESK6_MAX_DAYS", "7.0"))  # Até 7 dias
+MIN_PRICE = float(os.getenv("DESK6_MIN_PRICE", "0.920"))     # 92.0¢ (captura Theta Alpha + 98¢ Standard)
+MAX_PRICE = float(os.getenv("DESK6_MAX_PRICE", "0.995"))     # 99.5¢
+MAX_EXPIRY_DAYS = float(os.getenv("DESK6_MAX_DAYS", "7.0"))  # Até 7 dias (para 98¢ standard)
+THETA_THRESHOLD_PRICE = 0.965                                 # Abaixo disso = Theta Synthetic Alpha
+THETA_MAX_DAYS = 3.0                                          # Max 72 horas para opções com Theta acelerado
 
 # Modo de Execução: Default estrito é PAPER
 DESK6_MODE = os.getenv("DESK6_MODE", "PAPER").upper()
@@ -101,10 +105,7 @@ def load_journal() -> Dict[str, Any]:
 
 def save_journal(data: Dict[str, Any]):
     try:
-        with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        
-        # Sincroniza CSV
+        atomic_write_json(JOURNAL_JSON, data)
         positions = data.get("positions", [])
         if positions:
             fieldnames = [
@@ -120,15 +121,19 @@ def save_journal(data: Dict[str, Any]):
     except Exception as e:
         print(f"[Diário] Erro ao salvar journal: {e}")
 
-def update_state_file(data: Dict[str, Any], last_scan_time: str, candidates_found: int, candidates_approved: int):
+def update_state_file(data: Dict[str, Any], last_scan_time: str, candidates_found: int, candidates_approved: int, lp_rewards: Optional[List[Dict[str, Any]]] = None):
     try:
         active = [p for p in data.get("positions", []) if p.get("status") == "OPEN"]
         poly_active = [p for p in active if p.get("platform") == "Polymarket"]
         kalshi_active = [p for p in active if p.get("platform") == "Kalshi"]
+        theta_alpha = [p for p in active if p.get("strategy_type") == "THETA_SYNTHETIC_ALPHA"]
+        standard_98c = [p for p in active if p.get("strategy_type") != "THETA_SYNTHETIC_ALPHA"]
+        avg_ann_yield = round(sum(p.get("annualized_yield_pct", 0.0) for p in active) / len(active), 1) if active else 0.0
         total_pnl = sum(p.get("pnl", 0.0) for p in data.get("positions", []) if p.get("status") in ["WON", "LOST"])
+
         state = {
             "desk": "Desk 6",
-            "name": "98¢ Yield Harvester",
+            "name": "Yield Harvester, Theta & Polymarket LP Rewards 2.0",
             "mode": DESK6_MODE,
             "active": True,
             "last_scan_utc": last_scan_time,
@@ -139,15 +144,18 @@ def update_state_file(data: Dict[str, Any], last_scan_time: str, candidates_foun
             "max_poly_positions": MAX_POLY_POSITIONS,
             "kalshi_active_count": len(kalshi_active),
             "max_kalshi_positions": MAX_KALSHI_POSITIONS,
+            "theta_alpha_count": len(theta_alpha),
+            "standard_98c_count": len(standard_98c),
+            "avg_annualized_yield_pct": avg_ann_yield,
             "current_exposure_usd": round(len(active) * FIXED_STAKE, 2),
             "max_exposure_usd": MAX_TOTAL_EXPOSURE,
             "total_pnl_usd": round(total_pnl, 4),
             "last_candidates_scanned": candidates_found,
             "last_candidates_approved": candidates_approved,
+            "lp_rewards_top": lp_rewards or [],
             "positions": active
         }
-        with open(STATE_JSON, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        atomic_write_json(STATE_JSON, state)
     except Exception as e:
         print(f"[Estado] Erro ao salvar desk6_state.json: {e}")
 
@@ -213,8 +221,18 @@ def scan_polymarket_gamma(min_price: float, max_price: float, max_days: float) -
                     volume = float(m.get("volumeNum") or m.get("volume24hr") or 0.0)
                     spread = float(m.get("spread") or 0.01)
 
+                    days_left = round((end_dt - now).total_seconds() / 86400, 2)
+                    hours_left = max(round((end_dt - now).total_seconds() / 3600.0, 1), 0.5)
+
                     for idx, p in enumerate(prices):
                         if min_price <= p <= max_price:
+                            # Se for preço abaixo de 96.5¢, exige horizonte curto (Theta acelerado)
+                            if p < THETA_THRESHOLD_PRICE and days_left > THETA_MAX_DAYS:
+                                continue
+                            
+                            strat_type = "THETA_SYNTHETIC_ALPHA" if p < THETA_THRESHOLD_PRICE else "98C_STANDARD"
+                            ann_yield = round(((1.0 - p) / p) * (8760.0 / hours_left) * 100.0, 1)
+
                             outcome_name = outcomes[idx] if idx < len(outcomes) else f"Outcome {idx}"
                             tok_id = token_ids[idx] if token_ids and idx < len(token_ids) else None
                             candidates.append({
@@ -229,12 +247,78 @@ def scan_polymarket_gamma(min_price: float, max_price: float, max_days: float) -
                                 "volume": volume,
                                 "spread": spread,
                                 "end_date": end_iso,
-                                "days_remaining": round((end_dt - now).total_seconds() / 86400, 2),
+                                "days_remaining": days_left,
+                                "hours_remaining": hours_left,
+                                "strategy_type": strat_type,
+                                "annualized_yield_pct": ann_yield,
                                 "clob_token_id": tok_id
                             })
         except Exception as e:
             print(f"[Scanner Polymarket offset {offset}] Erro: {e}")
     return candidates
+
+
+def scan_polymarket_lp_rewards(limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    Varre mercados com incentivo oficial de Liquidez na Polymarket (Liquidity Rewards 2.0).
+    Baseado no repositório 'lihanyu81/polymarket_lp_tool'.
+    Fórmula de pontuação: Score = ((rewards_max_spread - distance) / rewards_max_spread)^2 * size
+    """
+    url = f"https://gamma-api.polymarket.com/markets?limit={limit}&active=true&closed=false"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    req = urllib.request.Request(url, headers=headers)
+    lp_candidates = []
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            markets = json.loads(resp.read().decode())
+            for m in markets:
+                max_spread = float(m.get("rewardsMaxSpread") or 0.0)
+                min_size = float(m.get("rewardsMinSize") or 0.0)
+                if max_spread <= 0 or min_size <= 0:
+                    continue
+                
+                prices_str = m.get("outcomePrices")
+                token_ids_str = m.get("clobTokenIds")
+                if not prices_str or not token_ids_str:
+                    continue
+                try:
+                    prices = [float(p) for p in (json.loads(prices_str) if isinstance(prices_str, str) else prices_str)]
+                    token_ids = json.loads(token_ids_str) if isinstance(token_ids_str, str) else token_ids_str
+                except Exception:
+                    continue
+                
+                if len(prices) < 2 or len(token_ids) < 2:
+                    continue
+                
+                mid = round((prices[0] + (1.0 - prices[1])) / 2.0, 4)
+                dist_cents = 1.0
+                if max_spread > dist_cents:
+                    spread_ratio = (max_spread - dist_cents) / max_spread
+                    score = round((spread_ratio ** 2) * min_size, 2)
+                else:
+                    score = 0.0
+                
+                lp_candidates.append({
+                    "platform": "Polymarket_LP",
+                    "market_id": m.get("id"),
+                    "slug": m.get("slug"),
+                    "question": m.get("question", ""),
+                    "condition_id": m.get("conditionId"),
+                    "max_spread_cents": max_spread,
+                    "min_size": min_size,
+                    "mid_price": mid,
+                    "target_bid": round(max(0.01, mid - 0.01), 3),
+                    "target_ask": round(min(0.99, mid + 0.01), 3),
+                    "lp_reward_score": score,
+                    "strategy_type": "POLYMARKET_LP_REWARDS",
+                    "annualized_yield_pct": round(score * 0.15, 1),
+                    "clob_token_id": token_ids[0]
+                })
+    except Exception as e:
+        print(f"[Scanner LP Rewards] Erro: {e}")
+    
+    lp_candidates.sort(key=lambda x: x["lp_reward_score"], reverse=True)
+    return lp_candidates
 
 
 def scan_kalshi_markets(min_price: float, max_price: float, max_days: float) -> List[Dict[str, Any]]:
@@ -281,8 +365,18 @@ def scan_kalshi_markets(min_price: float, max_price: float, max_days: float) -> 
                     except Exception:
                         pass
 
+                days_left = round((end_dt - now).total_seconds() / 86400, 2)
+                hours_left = max(round((end_dt - now).total_seconds() / 3600.0, 1), 0.5)
+
                 for outcome, p in checks:
                     if min_price <= p <= max_price:
+                        # Se for preço abaixo de 96.5¢, exige horizonte curto (Theta acelerado)
+                        if p < THETA_THRESHOLD_PRICE and days_left > THETA_MAX_DAYS:
+                            continue
+
+                        strat_type = "THETA_SYNTHETIC_ALPHA" if p < THETA_THRESHOLD_PRICE else "98C_STANDARD"
+                        ann_yield = round(((1.0 - p) / p) * (8760.0 / hours_left) * 100.0, 1)
+
                         candidates.append({
                             "platform": "Kalshi",
                             "market_id": m.get("ticker"),
@@ -295,7 +389,10 @@ def scan_kalshi_markets(min_price: float, max_price: float, max_days: float) -> 
                             "volume": float(m.get("volume_24h_fp") or m.get("volume_fp") or 0.0),
                             "spread": 0.01,
                             "end_date": close_time,
-                            "days_remaining": round((end_dt - now).total_seconds() / 86400, 2),
+                            "days_remaining": days_left,
+                            "hours_remaining": hours_left,
+                            "strategy_type": strat_type,
+                            "annualized_yield_pct": ann_yield,
                             "clob_token_id": m.get("ticker")
                         })
     except Exception as e:
@@ -319,11 +416,17 @@ def audit_with_jev(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "elapsed_sec": 0.0
         }
 
+    strat_type = candidate.get("strategy_type", "98C_STANDARD")
+    hours_left = candidate.get("hours_remaining", 24.0)
+    ann_yield = candidate.get("annualized_yield_pct", 0.0)
+
     market_dossier = f"""
+STRATEGY ENGINE: {strat_type} (Desk 6 Quantitative Yield & Synthetic Option Engine)
 QUESTION / CONTRACT: {candidate.get('question')}
 TARGET OUTCOME: {candidate.get('outcome')} (Priced at ${candidate.get('price'):.3f} | Implied Probability: {candidate.get('price')*100:.1f}%)
 PLATFORM: {candidate.get('platform')}
-EXPIRATION: {candidate.get('end_date')} ({candidate.get('days_remaining')} days remaining)
+EXPIRATION: {candidate.get('end_date')} ({candidate.get('days_remaining')} days / {hours_left:.1f}h remaining)
+ANNUALIZED THETA YIELD: +{ann_yield:.1f}%
 RESOLUTION SOURCE: {candidate.get('resolution_source')}
 
 CONTRACTUAL RULES & OFFICIAL DESCRIPTION:
@@ -331,7 +434,7 @@ CONTRACTUAL RULES & OFFICIAL DESCRIPTION:
 """
     questions = {
         "verdict": Choice(
-            instructions="Should an automated institutional fund buy this contract at ~98 cents to harvest yield upon settlement?",
+            instructions="Should an automated institutional fund buy this contract to harvest yield upon settlement, considering remaining time, margin of safety, and resolution clarity?",
             criteria={
                 "approved": "Approved: The event has either already concluded with official proof, or is an incontrovertible certainty with crystal-clear rules, objective deterministic resolution source, and virtually zero dispute risk.",
                 "rejected": "Rejected: Do not trade. The event outcome has non-trivial tail risk, ambiguous wording, room for subjective interpretation, or historical likelihood of oracle dispute."
@@ -354,9 +457,9 @@ CONTRACTUAL RULES & OFFICIAL DESCRIPTION:
         confidence = q_verdict.confidence
         dispute_prob = q_dispute.noul
 
-        # Regra de Aprovação Estrita (Peneira Agressiva)
-        # Só aprova se a escolha for 'approved' com baixa probabilidade de disputa (<= 0.15)
-        approved = (choice == "approved" and dispute_prob <= 0.15)
+        # Regra de Aprovação Estrita (Peneira Agressiva JEV)
+        # Só aprova se a escolha for 'approved' com baixa probabilidade de disputa (<= 0.15) e alta confiança (>= 0.80)
+        approved = (choice == "approved" and dispute_prob <= 0.15 and confidence >= 0.80)
 
         return {
             "approved": approved,
@@ -437,6 +540,11 @@ def execute_harvest_cycle():
     print(f"Modo: {DESK6_MODE} | Teto Stake: ${FIXED_STAKE:.2f} | Máx Posições: {MAX_ACTIVE_POSITIONS}")
     print("=" * 80)
 
+    halted, halt_msg = is_system_halted()
+    if halted:
+        print(f"🛑 [VETO DE SEGURANÇA] Kill-switch ativo ({halt_msg}). Abortando ciclo do Desk 6.")
+        return
+
     journal = load_journal()
     reconcile_open_positions(journal)
 
@@ -452,12 +560,18 @@ def execute_harvest_cycle():
     print(f"-> Posições ativas: {len(active_positions)}/{MAX_ACTIVE_POSITIONS} (Polymarket: {len(poly_active)}/{MAX_POLY_POSITIONS} | Kalshi: {len(kalshi_active)}/{MAX_KALSHI_POSITIONS})")
     print(f"-> Slots disponíveis para alocação: {slots_available} (Poly: {poly_slots} | Kalshi: {kalshi_slots})")
 
+    # 1. Scanner de Mercado & LP Rewards 2.0 (Polymarket Formula Oficial)
+    lp_candidates = scan_polymarket_lp_rewards()
+    print(f"-> Mercados com Programa Oficial de LP Rewards 2.0 encontrados: {len(lp_candidates)}")
+    if lp_candidates:
+        top_lp = lp_candidates[0]
+        print(f"   Top LP Target: '{top_lp['question'][:50]}...' | Score LP: {top_lp['lp_reward_score']} | Spread Máx: {top_lp['max_spread_cents']}¢ | Yield Estimado: +{top_lp['annualized_yield_pct']}%")
+
     if slots_available <= 0:
         print(f"[Alocação Pausada] Teto máximo de {MAX_ACTIVE_POSITIONS} posições ({MAX_POLY_POSITIONS} Poly + {MAX_KALSHI_POSITIONS} Kalshi) atingido. Aguardando liquidação.")
-        update_state_file(journal, now_utc, 0, 0)
+        update_state_file(journal, now_utc, 0, 0, lp_rewards=lp_candidates[:10])
         return
 
-    # 1. Scanner de Mercado
     poly_candidates = scan_polymarket_gamma(MIN_PRICE, MAX_PRICE, MAX_EXPIRY_DAYS)
     kalshi_candidates = scan_kalshi_markets(MIN_PRICE, MAX_PRICE, MAX_EXPIRY_DAYS)
     all_candidates = poly_candidates + kalshi_candidates
@@ -484,6 +598,17 @@ def execute_harvest_cycle():
 
         print(f"\n[Screener Jev] Analisando: '{cand['question'][:65]}...' ({platform})")
         print(f"   Target: {cand['outcome']} @ ${cand['price']:.3f} | Vencimento: {cand['days_remaining']} dias")
+
+        # 1.5. Salvaguarda Empírica de Cauda Gorda (Dukascopy/HistData + JEV)
+        hours_rem = cand.get("hours_remaining", cand.get("days_remaining", 1.0) * 24.0)
+        fat_safe, fat_reason = check_fat_tail_safety_gate(
+            entry_price=cand.get("price", 0.95),
+            strike_distance_pct=cand.get("strike_distance_pct", 0.05),
+            hours_remaining=hours_rem
+        )
+        if not fat_safe:
+            print(f"   🛡️ [VETO CAUDA GORDA (DUKASCOPY/JEV)]: {fat_reason}")
+            continue
 
         # 2. Auditoria Cognitiva Jev (TypeSafe System 1)
         audit = audit_with_jev(cand)
@@ -513,6 +638,9 @@ def execute_harvest_cycle():
                 "potential_payout": round(shares * 1.00, 4),
                 "potential_pnl": pot_profit,
                 "potential_roi_pct": pot_roi,
+                "strategy_type": cand.get("strategy_type", "98C_STANDARD"),
+                "hours_remaining": cand.get("hours_remaining", 24.0),
+                "annualized_yield_pct": cand.get("annualized_yield_pct", 0.0),
                 "status": "OPEN",
                 "end_date": cand["end_date"],
                 "jev_verdict": audit["verdict"],
@@ -522,10 +650,10 @@ def execute_harvest_cycle():
             }
 
             if DESK6_MODE == "LIVE":
-                # Execução real: aqui acoplamos com place_live_order CLOB V2
-                # Por segurança estrita, somente executará se DESK6_MODE=LIVE explícito
-                print(f"   [LIVE ORDER]: Executando compra na CLOB V2 para {shares} cotas a ${price:.3f}...")
-                pos_entry["live_executed"] = True
+                print(f"   ⚠️ [SEGURANÇA FAIL-CLOSED]: Execução LIVE desativada no Desk 6 (stub sem conector CLOB validado). Ordem LIVE bloqueada.")
+                pos_entry["live_executed"] = False
+                pos_entry["status"] = "BLOCKED_NO_LIVE_EXECUTOR"
+                continue
             else:
                 print(f"   [PAPER ORDER]: Registrando simulação de compra: {shares} cotas @ ${price:.3f} (Stake: ${stake:.2f} | Payout Potencial: ${shares:.2f} | ROI: +{pot_roi}%)")
                 pos_entry["live_executed"] = False
@@ -542,7 +670,7 @@ def execute_harvest_cycle():
             print(f"   🛡️ [VETO JEV]: Rejeitado para preservação de capital. Risco de cauda ou regras ambíguas.")
 
     # Atualiza arquivo de estado para o Dashboard
-    update_state_file(journal, now_utc, len(all_candidates), approved_count)
+    update_state_file(journal, now_utc, len(all_candidates), approved_count, lp_rewards=lp_candidates[:10])
     print(f"\n[Ciclo Concluído] Candidatos analisados: {len(all_candidates)} | Aprovados: {approved_count} | Slots restantes: {slots_available} (Poly: {poly_slots} | Kalshi: {kalshi_slots})")
 
 

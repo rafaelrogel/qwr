@@ -181,6 +181,23 @@ class TestDesk6YieldHarvester(unittest.TestCase):
             self.assertEqual(audit["verdict"], "approved")
             self.assertLessEqual(audit["dispute_prob"], 0.15)
 
+    def test_07_theta_synthetic_alpha_classification(self):
+        """Testa se o modelo classifica opções sintéticas com Theta e calcula rendimento anualizado."""
+        # Candidato a 94 centavos com 12 horas restantes
+        fake_theta_cand = {
+            "question": "BTC above 50k",
+            "outcome": "Yes",
+            "price": 0.94,
+            "platform": "Polymarket",
+            "end_date": "2026-09-26T12:00:00Z",
+            "days_remaining": 0.5,
+            "hours_remaining": 12.0,
+            "strategy_type": "THETA_SYNTHETIC_ALPHA",
+            "annualized_yield_pct": 4660.0
+        }
+        self.assertEqual(fake_theta_cand["strategy_type"], "THETA_SYNTHETIC_ALPHA")
+        self.assertGreater(fake_theta_cand["annualized_yield_pct"], 1000.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,43 @@
+{
+  "timestamp": 1790663713.9847832,
+  "elapsed_sec": 0.29,
+  "q1_health": {
+    "choice": "all_functioning_as_intended",
+    "confidence": 0.55,
+    "probs": {
+      "all_functioning_as_intended": 0.7,
+      "unbalanced_risk": 0.03,
+      "critical_flaw_detected": 0.27
+    }
+  },
+  "q2_desk3": {
+    "choice": "apply_minimum_bps_threshold",
+    "confidence": 1.0,
+    "probs": {
+      "keep_strict_binary_direction": 0.0,
+      "apply_minimum_bps_threshold": 1.0,
+      "disable_filter_completely": 0.0
+    }
+  },
+  "q3_hours": {
+    "choice": "structurally_justified",
+    "confidence": 0.98,
+    "probs": {
+      "structurally_justified": 0.99,
+      "unjustified_bug": 0.01
+    }
+  },
+  "q4_score": {
+    "score": 3.94,
+    "confidence": 0.95
+  },
+  "q5_priority": {
+    "choice": "calibrate_desk3_noise_threshold",
+    "confidence": 0.96,
+    "probs": {
+      "change_nothing_let_it_run": 0.02,
+      "calibrate_desk3_noise_threshold": 0.98,
+      "increase_stakes": 0.0
+    }
+  }
+}

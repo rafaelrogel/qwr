@@ -1,0 +1,30 @@
+{
+  "timestamp": 1790683049.793564,
+  "elapsed_sec": 0.3,
+  "q1_execution": {
+    "choice": "flawless_institutional_execution",
+    "confidence": 0.86,
+    "probs": {
+      "flawless_institutional_execution": 0.91,
+      "suboptimal_early_exit": 0.09,
+      "excessive_risk": 0.0
+    }
+  },
+  "q2_take_profit_score": {
+    "score": 3.83,
+    "confidence": 0.86
+  },
+  "q3_kelly": {
+    "choice": "optimal_fractional_kelly",
+    "confidence": 0.94,
+    "probs": {
+      "optimal_fractional_kelly": 0.96,
+      "too_aggressive": 0.03,
+      "too_conservative": 0.01
+    }
+  },
+  "q4_long_term_ev": {
+    "score": 3.37,
+    "confidence": 0.47
+  }
+}

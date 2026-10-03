@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790346288.7497544,
+  "elapsed_seconds": 0.6594438552856445,
+  "q1_systemic_edge": {
+    "choice": "robust_institutional_edge",
+    "confidence": 0.61,
+    "probabilities": {
+      "degraded_edge": 0.01,
+      "robust_institutional_edge": 0.74,
+      "unproven_edge": 0.25
+    }
+  },
+  "q2_cycle_143_diagnosis": {
+    "choice": "critical_accounting_fix_needed",
+    "confidence": 1.0,
+    "probabilities": {
+      "critical_accounting_fix_needed": 1.0,
+      "negligible_cosmetic_issue": 0.0,
+      "algorithmic_failure": 0.0
+    }
+  },
+  "q3_calibration_recommendation": {
+    "choice": "preserve_core_calibration_fix_parser",
+    "confidence": 1.0,
+    "probabilities": {
+      "tighten_all_parameters": 0.0,
+      "widen_take_profit_thresholds": 0.0,
+      "preserve_core_calibration_fix_parser": 1.0
+    }
+  },
+  "q4_system_health_score": {
+    "score": 2.99,
+    "confidence": 0.99
+  },
+  "q5_growth_probability": {
+    "noul": 0.73
+  }
+}

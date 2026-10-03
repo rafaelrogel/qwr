@@ -1,0 +1,27 @@
+{
+  "desk1_salvage_effectiveness": {
+    "choice": "approved_high_alpha_retention",
+    "score": null,
+    "noul": null
+  },
+  "desk2_sweep_shield_override": {
+    "choice": "sound_risk_management",
+    "score": null,
+    "noul": null
+  },
+  "desk3b_structural_transformation": {
+    "choice": "institutional_grade_convexity",
+    "score": null,
+    "noul": null
+  },
+  "overall_fleet_robustness_score": {
+    "choice": null,
+    "score": 2.89,
+    "noul": null
+  },
+  "executive_synthesis": {
+    "choice": null,
+    "score": null,
+    "noul": 0.38
+  }
+}

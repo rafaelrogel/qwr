@@ -1,0 +1,41 @@
+{
+  "validation_diurnal_regime_switching": {
+    "decision": "CONFIRMED_DIURNAL_REGIME_SWITCH",
+    "confidence": 0.95,
+    "probabilities": {
+      "CONFIRMED_DIURNAL_REGIME_SWITCH": 0.97,
+      "SPURIOUS_CORRELATION": 0.03,
+      "CONSTANT_REGIME": 0.0
+    }
+  },
+  "validation_nasdaq_lead_lag_myth": {
+    "decision": "CONFIRMED_HFT_ARBITRAGE_SPEED",
+    "confidence": 1.0,
+    "probabilities": {
+      "CONFIRMED_HFT_ARBITRAGE_SPEED": 1.0,
+      "15M_DELAY_IS_EXPLOITABLE": 0.0,
+      "NASDAQ_LAGS_BTC": 0.0
+    }
+  },
+  "validation_yield_harvester_fat_tails": {
+    "decision": "CONFIRMED_FAT_TAIL_HAZARD",
+    "confidence": 1.0,
+    "probabilities": {
+      "TAILS_ARE_GAUSSIAN": 0.0,
+      "IGNORE_FAT_TAILS": 0.0,
+      "CONFIRMED_FAT_TAIL_HAZARD": 1.0
+    }
+  },
+  "actionable_alpha_recommendation": {
+    "decision": "HYBRID_TIME_REGIME_WITH_STRICT_EDGE_GATE",
+    "confidence": 1.0,
+    "probabilities": {
+      "HYBRID_TIME_REGIME_WITH_STRICT_EDGE_GATE": 1.0,
+      "TRADE_ONLY_ONE_ASSET": 0.0,
+      "USE_AGGRESSIVE_MARTINGALE": 0.0
+    }
+  },
+  "intellectual_audit_score": {
+    "score": 3.9
+  }
+}

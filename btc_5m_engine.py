@@ -13,6 +13,12 @@ import json
 import urllib.request
 import threading
 from typing import Dict, Any, List, Optional
+from execution_math import (
+    calculate_vwap_ask,
+    calculate_executable_edge,
+    compute_fractional_kelly_stake,
+    bayesian_fair_value
+)
 
 class BTC5mEngine:
     def __init__(self, annualized_vol: float = 0.55):
@@ -179,11 +185,18 @@ class BTC5mEngine:
             return {"bids": [], "asks": []}
 
     def evaluate_signals(self, seconds_left: int, delta_price: float):
-        """Avalia os sinais algorítmicos baseados em Fair Value e Latência"""
-        edge_up = self.fair_value_up - self.poly_price_up
-        edge_down = self.fair_value_down - self.poly_price_down
-        self.edge_up = round(edge_up, 4)
-        self.edge_down = round(edge_down, 4)
+        """Avalia os sinais algorítmicos baseados em Fair Value e Latência com VWAP de Profundidade"""
+        # Executable Net Edge via VWAP Depth
+        asks_up = [(float(a["price"]), float(a["size"])) for a in self.book_up.get("asks", []) if "price" in a and "size" in a]
+        vwap_up, cost_up, shares_up, slip_up = calculate_vwap_ask(asks_up, target_usd=20.0)
+        gross_up, net_up, is_exec_up = calculate_executable_edge(self.fair_value_up, vwap_up or self.poly_price_up)
+
+        asks_down = [(float(a["price"]), float(a["size"])) for a in self.book_down.get("asks", []) if "price" in a and "size" in a]
+        vwap_down, cost_down, shares_down, slip_down = calculate_vwap_ask(asks_down, target_usd=20.0)
+        gross_down, net_down, is_exec_down = calculate_executable_edge(self.fair_value_down, vwap_down or self.poly_price_down)
+
+        self.edge_up = round(net_up, 4)
+        self.edge_down = round(net_down, 4)
         
         # 1. Sniper Final 60s
         if seconds_left <= 60:
@@ -208,26 +221,28 @@ class BTC5mEngine:
                     "expected_return": f"+{((1.0 - self.poly_price_down) / self.poly_price_down * 100):.1f}%"
                 }
                 
-        # 2. Vantagem Estatística Black-Scholes (+EV)
-        if edge_up >= 0.08:
+        # 2. Vantagem Estatística com Net Edge Executável Real (VWAP L2)
+        if net_up >= 0.02 and is_exec_up:
+            fill_p = vwap_up if vwap_up else self.poly_price_up
             return {
                 "type": "FAIR_VALUE_EDGE",
-                "action": f"🟢 COMPRA UP COM EDGE (+{edge_up*100:.1f}%)",
+                "action": f"🟢 COMPRA UP COM NET EDGE (+{net_up*100:.1f}%)",
                 "target": "UP",
-                "confidence": min(88, int(50 + edge_up * 150)),
-                "rationale": f"Fair Value é {self.fair_value_up*100:.1f}%, mas Polymarket está precificando a {self.poly_price_up*100:.1f}%. Desconto de {edge_up*100:.1f}¢.",
+                "confidence": min(88, int(50 + net_up * 150)),
+                "rationale": f"Fair Value é {self.fair_value_up*100:.1f}%, VWAP Real é ${fill_p:.2f}. Net Edge executável de +{net_up*100:.1f}%.",
                 "color": "#10b981",
-                "expected_return": f"+{edge_up*100:.1f} pts"
+                "expected_return": f"+{net_up*100:.1f} pts"
             }
-        elif edge_down >= 0.08:
+        elif net_down >= 0.02 and is_exec_down:
+            fill_p = vwap_down if vwap_down else self.poly_price_down
             return {
                 "type": "FAIR_VALUE_EDGE",
-                "action": f"🔴 COMPRA DOWN COM EDGE (+{edge_down*100:.1f}%)",
+                "action": f"🔴 COMPRA DOWN COM NET EDGE (+{net_down*100:.1f}%)",
                 "target": "DOWN",
-                "confidence": min(88, int(50 + edge_down * 150)),
-                "rationale": f"Fair Value é {self.fair_value_down*100:.1f}%, mas Polymarket está precificando a {self.poly_price_down*100:.1f}%. Desconto de {edge_down*100:.1f}¢.",
+                "confidence": min(88, int(50 + net_down * 150)),
+                "rationale": f"Fair Value é {self.fair_value_down*100:.1f}%, VWAP Real é ${fill_p:.2f}. Net Edge executável de +{net_down*100:.1f}%.",
                 "color": "#ef4444",
-                "expected_return": f"+{edge_down*100:.1f} pts"
+                "expected_return": f"+{net_down*100:.1f} pts"
             }
             
         # 3. Formação de Mercado (Spread Neutro)

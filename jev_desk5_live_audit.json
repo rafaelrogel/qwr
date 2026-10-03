@@ -1,0 +1,46 @@
+{
+  "timestamp": 1790369953.6356616,
+  "answers": {
+    "readiness_for_live": {
+      "choice": "prudent_refinement_first",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "do_not_deploy": 0.0,
+        "prudent_refinement_first": 1.0,
+        "ready_with_small_size": 0.0
+      },
+      "noul": null
+    },
+    "risk_grade_score": {
+      "choice": null,
+      "score": 0.04,
+      "confidence": 0.97,
+      "probabilities": {
+        "0": 0.97,
+        "1": 0.03,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0
+      },
+      "noul": null
+    },
+    "market_timing_advice": {
+      "choice": "wait_for_monday_open",
+      "score": null,
+      "confidence": 1.0,
+      "probabilities": {
+        "wait_for_monday_open": 1.0,
+        "leave_bot_polling": 0.0
+      },
+      "noul": null
+    },
+    "jev_verdict_summary": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.38
+    }
+  }
+}

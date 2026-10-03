@@ -1,0 +1,42 @@
+{
+  "timestamp": 1790837469.2201297,
+  "elapsed_sec": 0.35,
+  "answers": {
+    "dilemma1_late_candle_squeeze_solution": {
+      "choice": "ADD_STAGED_TAKE_PROFIT_AT_2X",
+      "confidence": 0.63,
+      "probabilities": {
+        "ADD_STAGED_TAKE_PROFIT_AT_2X": 0.75,
+        "MAINTAIN_CURRENT_HOLD_EXPIRY": 0.25,
+        "TIGHTEN_STOP_LOSS_LAST_MINUTE": 0.0
+      }
+    },
+    "dilemma2_oracle_lead_lag_spread_filter": {
+      "choice": "APPROVE_ORACLE_SPREAD_FILTER_50USD",
+      "confidence": 0.79,
+      "probabilities": {
+        "TOLERATE_SPREAD_BELOW_100USD": 0.07,
+        "APPROVE_ORACLE_SPREAD_FILTER_50USD": 0.86,
+        "IGNORE_BINANCE_ORACLE_ONLY_MATTERS": 0.07
+      }
+    },
+    "dilemma3_kelly_sizing_current_bankroll": {
+      "choice": "MAINTAIN_FRACTIONAL_KELLY_8PCT_CAP",
+      "confidence": 0.82,
+      "probabilities": {
+        "MAINTAIN_FRACTIONAL_KELLY_8PCT_CAP": 0.88,
+        "INCREASE_STAKE_FOR_FAST_RECOVERY": 0.0,
+        "REDUCE_TO_FIXED_1_USD_UNTIL_30": 0.12
+      }
+    },
+    "intellectual_consensus_and_code_action": {
+      "choice": "IMPLEMENT_ORACLE_SPREAD_GATE_ONLY",
+      "confidence": 0.82,
+      "probabilities": {
+        "NO_CODE_CHANGES_NEEDED_SYSTEM_OPTIMAL": 0.12,
+        "IMPLEMENT_ORACLE_SPREAD_GATE_ONLY": 0.88,
+        "RADICAL_OVERHAUL_NEEDED": 0.0
+      }
+    }
+  }
+}

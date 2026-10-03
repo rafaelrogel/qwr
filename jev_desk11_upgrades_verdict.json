@@ -1,0 +1,33 @@
+{
+  "timestamp": 1790606827.108793,
+  "elapsed_sec": 0.33,
+  "answers": {
+    "proposal_1_volatility_filter_verdict": {
+      "choice": "REJECT_TOO_RESTRICTIVE",
+      "confidence": 0.29,
+      "probabilities": {
+        "APPROVE_VOLATILITY_FILTER": 0.33,
+        "REJECT_TOO_RESTRICTIVE": 0.53,
+        "MODIFY_TO_ATR": 0.14
+      }
+    },
+    "proposal_2_rth_open_shield_verdict": {
+      "choice": "APPROVE_RTH_OPEN_SHIELD",
+      "confidence": 0.54,
+      "probabilities": {
+        "REJECT_KEEP_UNIFORM_4_POINTS": 0.03,
+        "DELAY_ENTRY_TO_MINUTE_12": 0.27,
+        "APPROVE_RTH_OPEN_SHIELD": 0.7
+      }
+    },
+    "proposal_3_kalshi_series_hierarchy_verdict": {
+      "choice": "RESTRICT_TO_INTRADAY_HOURLY_ONLY",
+      "confidence": 0.95,
+      "probabilities": {
+        "APPROVE_FULL_FALLBACK": 0.0,
+        "STRICT_15M_ONLY_NO_FALLBACK": 0.03,
+        "RESTRICT_TO_INTRADAY_HOURLY_ONLY": 0.97
+      }
+    }
+  }
+}

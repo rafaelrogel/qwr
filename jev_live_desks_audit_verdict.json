@@ -1,0 +1,53 @@
+{
+  "audit_timestamp": "2026-10-01T07:54:28.265710+00:00",
+  "audit_scope": "DESKS_LIVE",
+  "desks_auditados": [
+    "DESK1_BTC_5M_LIVE",
+    "DESK2_SOL_5M_LIVE",
+    "DESK3_BTC_15M_LIVE",
+    "DESK5_NATGAS_15M_LIVE"
+  ],
+  "dilemas": [
+    {
+      "dilema_id": "DILEMA_1",
+      "titulo": "Desk 2 (SOL 5m LIVE) — 0 trades com $20.71 de saldo: bug de filtros ou comportamento esperado?",
+      "veredito": "MODO_LIVE_TRAVA",
+      "confianca": 78,
+      "raciocinio": "get_usdc_balance() retorna -1.0 em timeout. -1.0 < 15.00 → retorna antes de operar. Com Polymarket CLOB tendo latência variável especialmente em horário off-peak (03-05 ET), timeouts são possíveis. Isso explica 0 trades mais parcimoniosamente do que 'filtros excessivos' ou 'sem sinal'. Combinado: LOGGING_MELHORADO também necessário para confirmar.",
+      "runner_up": "FILTROS_EXCESSIVOS",
+      "confianca_runner_up": 62
+    },
+    {
+      "dilema_id": "DILEMA_2",
+      "titulo": "Desk 2 (SOL 5m) — A estrutura if/elif de entrada é segura contra UnboundLocalError?",
+      "veredito": "ESTRUTURA_SEGURA",
+      "confianca": 94,
+      "raciocinio": "A análise do código confirma: em sol_trader_5m.py, best_ask é atribuído na linha 627 DENTRO de 'if not btc_veto:' mas ANTES da cadeia if/elif de preço. Portanto best_ask sempre existe quando chegamos no if/elif. Diferente de eth_trader_5m onde best_ask era a variável undefined. Bug #3 NÃO presente no SOL.",
+      "runner_up": "APLICAR_PATCH_PREVENTIVO",
+      "confianca_runner_up": 45
+    },
+    {
+      "dilema_id": "DILEMA_3",
+      "titulo": "Desk 1 (BTC 5m LIVE) — Verificar se tem o mesmo padrão de entrada que Desk 2 (SOL) ou o padrão bugado do Desk 8 (ETH)?",
+      "veredito": "AUDITAR_live_trader_5m",
+      "confianca": 96,
+      "raciocinio": "Mesmo que o user diga que funciona, 'funciona' pode significar 'nunca gerou um caminho com spread_ok=False'. Se o bug só se manifesta quando spread_ok=False E o candidato passa o deadband, é possível que o bot tenha operado apenas em ciclos onde spread sempre estava OK. Confirmar a estrutura é necessário antes de fechar a auditoria dos desks live.",
+      "runner_up": "CONFIAR_NO_USER",
+      "confianca_runner_up": 40
+    },
+    {
+      "dilema_id": "DILEMA_4",
+      "titulo": "Desk 2 (SOL 5m LIVE) — get_usdc_balance() retornando -1.0 em caso de timeout é uma bomba-relógio?",
+      "veredito": "CORRIGIR_URGENTE",
+      "confianca": 89,
+      "raciocinio": "O padrão de retornar -1.0 em falha e depois usar -1.0 < 15.00 para acionar trava de segurança é uma bomba-relógio em produção. Em modo LIVE com dinheiro real, qualquer instabilidade de rede resulta em paralisação total silenciosa — o bot aparece 'ativo' no dashboard mas não opera. Fix correto: usar saldo em cache se a última consulta foi há menos de 60s, caso contrário falhar conservadoramente.",
+      "runner_up": "CACHE_COM_TTL",
+      "confianca_runner_up": 84
+    }
+  ],
+  "prioridade_imediata": [
+    "CORRIGIR_get_usdc_balance_fallback_cache_em_sol_trader_5m",
+    "ADICIONAR_LOG_quando_balance_retorna_minus1",
+    "AUDITAR_live_trader_5m_linhas_600_700_estrutura_if_elif"
+  ]
+}

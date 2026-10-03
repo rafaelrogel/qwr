@@ -1,0 +1,54 @@
+{
+  "timestamp": 1790695571.0509114,
+  "elapsed_sec": 0.33,
+  "q1_book_quality": {
+    "choice": "cutting_edge_institutional_handbook",
+    "confidence": 0.94,
+    "probs": {
+      "cutting_edge_institutional_handbook": 0.96,
+      "theoretical_academic_compilation": 0.0,
+      "unfocused_collection": 0.04
+    }
+  },
+  "q2_highest_value_insight": {
+    "choice": "execution_cost_optimization_and_spread_timing",
+    "confidence": 0.55,
+    "probs": {
+      "execution_cost_optimization_and_spread_timing": 0.67,
+      "corrective_ai_pop_filter": 0.2,
+      "t_stat_trend_scanning_drift": 0.0,
+      "reinforcement_learning_hedging": 0.13
+    }
+  },
+  "q3_should_we_create_new_desks": {
+    "choice": "strictly_maintain_prediction_markets_focus",
+    "confidence": 0.99,
+    "probs": {
+      "strictly_maintain_prediction_markets_focus": 1.0,
+      "create_quantconnect_forex_desk": 0.0,
+      "create_stock_ranking_desk": 0.0
+    }
+  },
+  "q4_codebase_refinement": {
+    "choice": "refine_spread_gate_with_cost_delay",
+    "confidence": 0.85,
+    "probs": {
+      "refine_spread_gate_with_cost_delay": 0.9,
+      "add_heavy_transformer_models": 0.0,
+      "no_code_change_needed": 0.1
+    }
+  },
+  "q5_what_to_avoid": {
+    "choice": "avoid_heavy_deep_learning_in_hot_loops",
+    "confidence": 1.0,
+    "probs": {
+      "avoid_heavy_deep_learning_in_hot_loops": 1.0,
+      "avoid_spread_checks": 0.0,
+      "avoid_dynamic_deadbands": 0.0
+    }
+  },
+  "q6_scientific_score": {
+    "score": 3.07,
+    "confidence": 0.86
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "batch": "BATCH_4_100GB",
+  "status": "FINISHED_100GB_CAP",
+  "timestamp": 1790471387.7669573,
+  "total_downloaded_bytes": 107213698240,
+  "total_downloaded_gb": 99.851,
+  "max_limit_gb": 100.0,
+  "progress_pct": 99.85,
+  "files_downloaded": 392,
+  "current_file": "COMPLETE"
+}

@@ -1,53 +1,15 @@
 {
-  "mode": "PAPER_SIMULATION_SOL_5M",
-  "current_balance": 29.6506,
-  "total_trades": 3,
-  "wins": 3,
+  "mode": "LIVE_SOL_5M_CLOB_REAL",
+  "execution_mode": "LIVE",
+  "funder": "0xE00Bd7989108c9016cCF4479ce03BaCa09f6314c",
+  "shared_wallet": true,
+  "shared_wallet_asset": "USDC (Polygon Safe 1271)",
+  "current_balance": 20.7094,
+  "total_trades": 0,
+  "wins": 0,
   "losses": 0,
-  "win_rate": 100.0,
-  "trades": [
-    {
-      "cycle_ts": 1790179200,
-      "time_str": "16:00:00",
-      "strike": 113.86,
-      "final_spot": 114.27,
-      "target_side": "UP",
-      "entry_price": 0.251,
-      "shares": 3.9841,
-      "winner": "UP",
-      "result": "VIT\u00d3RIA",
-      "sold_early": false,
-      "payout": 3.9841,
-      "pnl": 2.9841,
-      "balance": 27.9841
-    },
-    {
-      "cycle_ts": 1790183400,
-      "time_str": "17:10:00",
-      "strike": 113.89,
-      "target_side": "DOWN",
-      "entry_price": 0.4509,
-      "shares": 2.2178,
-      "result": "VIT\u00d3RIA (TAKE-PROFIT)",
-      "sold_early": true,
-      "sell_price": 0.94,
-      "payout": 2.0847,
-      "pnl": 1.0847,
-      "balance": 29.0688
-    },
-    {
-      "cycle_ts": 1790191200,
-      "time_str": "19:20:00",
-      "strike": 114.28,
-      "target_side": "UP",
-      "entry_price": 0.55,
-      "shares": 1.8182,
-      "result": "VIT\u00d3RIA (TAKE-PROFIT)",
-      "sold_early": true,
-      "sell_price": 0.87,
-      "payout": 1.5818,
-      "pnl": 0.5818,
-      "balance": 29.6506
-    }
-  ]
+  "win_rate": 0.0,
+  "status": "MONITORANDO_JANELAS_AO_VIVO",
+  "notes": "Desk 2 operando ao vivo com saldo compartilhado da Safe (.71 USDC). Hist\u00f3rico de 3 vit\u00f3rias da fase de testes arquivado em sol_paper_journal.json.",
+  "trades": []
 }

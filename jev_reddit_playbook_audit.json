@@ -1,0 +1,59 @@
+{
+  "timestamp": 1790371666.4243715,
+  "answers": {
+    "highest_ev_strategy": {
+      "choice": "cross_market_arb",
+      "score": null,
+      "confidence": 0.39,
+      "probabilities": {
+        "odds_lead_lag_perps": 0.0,
+        "cross_market_arb": 0.54,
+        "synthetic_options_tails": 0.06,
+        "bayesian_market_lag": 0.4
+      },
+      "noul": null
+    },
+    "cross_market_desk_viability": {
+      "choice": "unviable_due_to_capital_friction",
+      "score": null,
+      "confidence": 0.63,
+      "probabilities": {
+        "viable_and_recommended": 0.08,
+        "unviable_due_to_capital_friction": 0.75,
+        "only_on_major_macro_events": 0.17
+      },
+      "noul": null
+    },
+    "perp_lead_lag_desk_viability": {
+      "choice": "spurious_lead_lag",
+      "score": null,
+      "confidence": 0.97,
+      "probabilities": {
+        "sound_cross_instrument_edge": 0.02,
+        "niche_news_events_only": 0.01,
+        "spurious_lead_lag": 0.97
+      },
+      "noul": null
+    },
+    "guide_institutional_robustness_score": {
+      "choice": null,
+      "score": 1.46,
+      "confidence": 0.58,
+      "probabilities": {
+        "0": 0.02,
+        "1": 0.56,
+        "2": 0.36,
+        "3": 0.06,
+        "4": 0.0
+      },
+      "noul": null
+    },
+    "jev_overall_recommendation": {
+      "choice": null,
+      "score": null,
+      "confidence": null,
+      "probabilities": null,
+      "noul": 0.31
+    }
+  }
+}

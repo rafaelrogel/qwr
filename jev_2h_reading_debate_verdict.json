@@ -1,0 +1,35 @@
+{
+  "timestamp": 1790679807.959666,
+  "elapsed_sec": 0.35,
+  "q1_agreement": {
+    "choice": "full_agreement_optimal_behavior",
+    "confidence": 0.95,
+    "probs": {
+      "partial_agreement_too_conservative": 0.02,
+      "full_agreement_optimal_behavior": 0.96,
+      "disagreement_underperformance": 0.02
+    }
+  },
+  "q2_recommendation": {
+    "choice": "maintain_current_fail_closed_posture",
+    "confidence": 0.83,
+    "probs": {
+      "prepare_spx_and_weather_focus": 0.11,
+      "increase_price_cap_for_high_delta": 0.0,
+      "maintain_current_fail_closed_posture": 0.89
+    }
+  },
+  "q3_score": {
+    "score": 3.95,
+    "confidence": 0.96
+  },
+  "q4_whale_utility": {
+    "choice": "keep_as_independent_radar",
+    "confidence": 0.85,
+    "probs": {
+      "modulate_dynamic_deadband": 0.0,
+      "keep_as_independent_radar": 0.9,
+      "use_as_directional_veto_filter": 0.1
+    }
+  }
+}

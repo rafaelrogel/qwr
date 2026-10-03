@@ -1,0 +1,45 @@
+{
+  "timestamp": 1790630426.039467,
+  "elapsed_sec": 0.39,
+  "answers": {
+    "highest_alpha_repository": {
+      "choice": "SII_WANGZJ_POLYMARKET_DATA",
+      "confidence": 0.65,
+      "probabilities": {
+        "EVAN_KOLBERG_NAUTILUS": 0.15,
+        "HARRIER_RUST_TOOLKITS": 0.02,
+        "POLYWEATHER_METAR_STACK": 0.1,
+        "SII_WANGZJ_POLYMARKET_DATA": 0.71,
+        "LIHANYU_LP_TOOL": 0.02
+      }
+    },
+    "new_desk_recommendation": {
+      "choice": "UPGRADE_DESK6_WITH_LP_REWARDS_TOOL",
+      "confidence": 0.29,
+      "probabilities": {
+        "DO_NOT_ADD_ANY_DESK": 0.16,
+        "ADD_DESK12_WEATHER_METAR_ARBITRAGE": 0.32,
+        "UPGRADE_DESK6_WITH_LP_REWARDS_TOOL": 0.52
+      }
+    },
+    "code_architecture_assimilation": {
+      "choice": "LP_REWARD_SCORING_FORMULA",
+      "confidence": 0.54,
+      "probabilities": {
+        "POLYWEATHER_METAR_INGESTION_MODULE": 0.03,
+        "CLICKHOUSE_WHALE_PROFILING": 0.03,
+        "LP_REWARD_SCORING_FORMULA": 0.64,
+        "HARRIER_CROSS_MARKET_ARB_MATH": 0.3
+      }
+    },
+    "overall_post_verdict": {
+      "choice": "GENUINE_HIGH_VALUE_CURATION",
+      "confidence": 0.29,
+      "probabilities": {
+        "MARKETING_HYPE_ONLY": 0.0,
+        "MIXED_QUALITY_WITH_GEMS": 0.47,
+        "GENUINE_HIGH_VALUE_CURATION": 0.53
+      }
+    }
+  }
+}

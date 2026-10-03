@@ -1,0 +1,44 @@
+{
+  "timestamp": 1790694273.393186,
+  "elapsed_sec": 0.29,
+  "architectural_soundness": {
+    "choice": "institutional_grade_implementation",
+    "confidence": 0.93,
+    "probs": {
+      "unstable_logic": 0.01,
+      "unnecessary_overhead": 0.04,
+      "institutional_grade_implementation": 0.95
+    }
+  },
+  "volatility_deadband_modulation": {
+    "choice": "statistically_sound_defense",
+    "confidence": 0.81,
+    "probs": {
+      "statistically_sound_defense": 0.88,
+      "linear_deadband_is_better": 0.0,
+      "inverted_logic": 0.12
+    }
+  },
+  "latency_and_safety_certification": {
+    "choice": "certified_safe_and_zero_adverse_impact",
+    "confidence": 0.23,
+    "probs": {
+      "certified_safe_and_zero_adverse_impact": 0.49,
+      "potential_latency_risk": 0.11,
+      "requires_further_monitoring": 0.4
+    }
+  },
+  "final_deployment_verdict": {
+    "choice": "approved_and_keep_active",
+    "confidence": 0.83,
+    "probs": {
+      "rollback_to_diurnal_only": 0.07,
+      "approved_and_keep_active": 0.89,
+      "recalibrate_thresholds": 0.04
+    }
+  },
+  "overall_quant_score": {
+    "score": 3.78,
+    "confidence": 0.82
+  }
+}

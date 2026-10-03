@@ -1,0 +1,212 @@
+{
+  "timestamp": 1790549204.7885404,
+  "execution_time_sec": 18.53,
+  "natgas_verdict": {
+    "asset": "NATGAS",
+    "sample_size_15m": 14957,
+    "percentiles_bps": {
+      "p50": 15.29,
+      "p75": 29.97,
+      "p85": 41.36,
+      "p90": 51.04,
+      "p95": 67.69
+    },
+    "percentiles_dollars": {
+      "p50": 0.005,
+      "p75": 0.01,
+      "p85": 0.014,
+      "p90": 0.018,
+      "p95": 0.025
+    },
+    "win_rates_by_deadband": {
+      "5.0 bps": {
+        "win_rate_pct": 79.24,
+        "trades_count": 12098,
+        "frequency_pct": 80.9
+      },
+      "7.5 bps": {
+        "win_rate_pct": 81.97,
+        "trades_count": 10553,
+        "frequency_pct": 70.6
+      },
+      "10.0 bps": {
+        "win_rate_pct": 83.45,
+        "trades_count": 9692,
+        "frequency_pct": 64.8
+      },
+      "12.5 bps": {
+        "win_rate_pct": 84.82,
+        "trades_count": 8595,
+        "frequency_pct": 57.5
+      },
+      "15.0 bps": {
+        "win_rate_pct": 86.26,
+        "trades_count": 7567,
+        "frequency_pct": 50.6
+      },
+      "20.0 bps": {
+        "win_rate_pct": 88.71,
+        "trades_count": 5954,
+        "frequency_pct": 39.8
+      }
+    },
+    "hourly_volatility_utc": {
+      "0": {
+        "avg_bps_450": 20.79,
+        "median_bps_450": 16.24,
+        "sample_size": 199
+      },
+      "1": {
+        "avg_bps_450": 23.82,
+        "median_bps_450": 16.16,
+        "sample_size": 134
+      },
+      "2": {
+        "avg_bps_450": 18.4,
+        "median_bps_450": 14.63,
+        "sample_size": 80
+      },
+      "3": {
+        "avg_bps_450": 20.66,
+        "median_bps_450": 13.58,
+        "sample_size": 236
+      },
+      "4": {
+        "avg_bps_450": 16.1,
+        "median_bps_450": 12.96,
+        "sample_size": 147
+      },
+      "5": {
+        "avg_bps_450": 25.42,
+        "median_bps_450": 17.57,
+        "sample_size": 281
+      },
+      "6": {
+        "avg_bps_450": 21.49,
+        "median_bps_450": 14.03,
+        "sample_size": 675
+      },
+      "7": {
+        "avg_bps_450": 17.06,
+        "median_bps_450": 11.15,
+        "sample_size": 681
+      },
+      "8": {
+        "avg_bps_450": 14.1,
+        "median_bps_450": 10.01,
+        "sample_size": 684
+      },
+      "9": {
+        "avg_bps_450": 16.27,
+        "median_bps_450": 10.29,
+        "sample_size": 623
+      },
+      "10": {
+        "avg_bps_450": 16.28,
+        "median_bps_450": 12.26,
+        "sample_size": 836
+      },
+      "11": {
+        "avg_bps_450": 21.88,
+        "median_bps_450": 17.31,
+        "sample_size": 962
+      },
+      "12": {
+        "avg_bps_450": 32.27,
+        "median_bps_450": 24.67,
+        "sample_size": 1026
+      },
+      "13": {
+        "avg_bps_450": 32.77,
+        "median_bps_450": 25.95,
+        "sample_size": 1046
+      },
+      "14": {
+        "avg_bps_450": 29.99,
+        "median_bps_450": 22.0,
+        "sample_size": 1055
+      },
+      "15": {
+        "avg_bps_450": 24.96,
+        "median_bps_450": 18.03,
+        "sample_size": 1048
+      },
+      "16": {
+        "avg_bps_450": 24.27,
+        "median_bps_450": 16.73,
+        "sample_size": 1038
+      },
+      "17": {
+        "avg_bps_450": 23.38,
+        "median_bps_450": 15.29,
+        "sample_size": 1036
+      },
+      "18": {
+        "avg_bps_450": 25.37,
+        "median_bps_450": 16.4,
+        "sample_size": 1038
+      },
+      "19": {
+        "avg_bps_450": 18.21,
+        "median_bps_450": 10.34,
+        "sample_size": 884
+      },
+      "20": {
+        "avg_bps_450": 13.73,
+        "median_bps_450": 9.33,
+        "sample_size": 726
+      },
+      "21": {
+        "avg_bps_450": 16.98,
+        "median_bps_450": 12.77,
+        "sample_size": 230
+      },
+      "22": {
+        "avg_bps_450": 33.51,
+        "median_bps_450": 20.56,
+        "sample_size": 121
+      },
+      "23": {
+        "avg_bps_450": 31.03,
+        "median_bps_450": 17.29,
+        "sample_size": 171
+      }
+    }
+  },
+  "es_spx_verdict": {
+    "asset": "ES_EMINI_SPX",
+    "sample_size_15m": 6691,
+    "win_rates_by_deadband": {
+      "1.5 pts": {
+        "win_rate_pct": 83.86,
+        "trades_count": 4053,
+        "frequency_pct": 60.6
+      },
+      "2.5 pts": {
+        "win_rate_pct": 87.95,
+        "trades_count": 2714,
+        "frequency_pct": 40.6
+      },
+      "3.5 pts": {
+        "win_rate_pct": 90.63,
+        "trades_count": 1793,
+        "frequency_pct": 26.8
+      },
+      "5.0 pts": {
+        "win_rate_pct": 93.19,
+        "trades_count": 969,
+        "frequency_pct": 14.5
+      },
+      "7.5 pts": {
+        "win_rate_pct": 94.98,
+        "trades_count": 418,
+        "frequency_pct": 6.2
+      },
+      "10.0 pts": {
+        "win_rate_pct": 96.57,
+        "trades_count": 204,
+        "frequency_pct": 3.0
+      }
+    }
+  }
+}

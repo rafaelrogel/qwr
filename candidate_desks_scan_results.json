@@ -1,0 +1,66 @@
+{
+  "poly_xrp": {
+    "active": true,
+    "spread": 0.76,
+    "volume": 0.0,
+    "liquidity": 3521.5824,
+    "best_bid": 0.23,
+    "best_ask": 0.99
+  },
+  "poly_doge": {
+    "active": true,
+    "spread": 0.76,
+    "volume": 0.0,
+    "liquidity": 2767.058,
+    "best_bid": 0.23,
+    "best_ask": 0.99
+  },
+  "kalshi_eth": {
+    "active": true,
+    "ticker": "KXETH15M-26SEP260815-15",
+    "volume": 0,
+    "oi": 0,
+    "yes_bid": 0.0,
+    "yes_ask": 0.0,
+    "spread": 999
+  },
+  "kalshi_wti": {
+    "active": false,
+    "spread": 999,
+    "volume": 0,
+    "oi": 0
+  },
+  "kalshi_ndq": {
+    "active": false,
+    "spread": 999,
+    "volume": 0,
+    "oi": 0
+  },
+  "backtest_xrp": {
+    "asset": "XRP 5m (Polymarket)",
+    "trades": 24,
+    "wr": 95.8,
+    "pf": 19.63,
+    "total_pnl": 18.63,
+    "ev": 0.776,
+    "sharpe": 9.68
+  },
+  "backtest_doge": {
+    "asset": "DOGE 5m (Polymarket)",
+    "trades": 26,
+    "wr": 88.5,
+    "pf": 6.27,
+    "total_pnl": 15.81,
+    "ev": 0.608,
+    "sharpe": 5.22
+  },
+  "backtest_eth15": {
+    "asset": "ETH 15m (Kalshi KXETH15M)",
+    "trades": 14,
+    "wr": 85.7,
+    "pf": 7.94,
+    "total_pnl": 9.02,
+    "ev": 0.644,
+    "sharpe": 4.34
+  }
+}

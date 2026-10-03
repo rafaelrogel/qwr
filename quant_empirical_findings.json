@@ -1,0 +1,197 @@
+{
+  "btc_hourly_autocorr": {
+    "trending_hours_utc": [
+      6,
+      8,
+      10,
+      13
+    ],
+    "mean_reverting_hours_utc": [
+      0,
+      4,
+      5,
+      11,
+      16,
+      17,
+      19,
+      21,
+      22,
+      23
+    ],
+    "hourly_breakdown": {
+      "0": {
+        "autocorr_lag1": -0.0562,
+        "vol_bps": 27.9,
+        "samples": 1052,
+        "regime": "MEAN_REVERTING"
+      },
+      "1": {
+        "autocorr_lag1": -0.0053,
+        "vol_bps": 27.3,
+        "samples": 1052,
+        "regime": "RANDOM_WALK"
+      },
+      "2": {
+        "autocorr_lag1": 0.0091,
+        "vol_bps": 22.3,
+        "samples": 1052,
+        "regime": "RANDOM_WALK"
+      },
+      "3": {
+        "autocorr_lag1": 0.027,
+        "vol_bps": 20.6,
+        "samples": 1052,
+        "regime": "RANDOM_WALK"
+      },
+      "4": {
+        "autocorr_lag1": -0.1741,
+        "vol_bps": 18.1,
+        "samples": 1052,
+        "regime": "MEAN_REVERTING"
+      },
+      "5": {
+        "autocorr_lag1": -0.0992,
+        "vol_bps": 20.3,
+        "samples": 1052,
+        "regime": "MEAN_REVERTING"
+      },
+      "6": {
+        "autocorr_lag1": 0.0641,
+        "vol_bps": 19.4,
+        "samples": 1050,
+        "regime": "TRENDING/MOMENTUM"
+      },
+      "7": {
+        "autocorr_lag1": -0.0098,
+        "vol_bps": 19.2,
+        "samples": 1051,
+        "regime": "RANDOM_WALK"
+      },
+      "8": {
+        "autocorr_lag1": 0.0723,
+        "vol_bps": 22.7,
+        "samples": 1052,
+        "regime": "TRENDING/MOMENTUM"
+      },
+      "9": {
+        "autocorr_lag1": 0.0312,
+        "vol_bps": 19.8,
+        "samples": 1052,
+        "regime": "RANDOM_WALK"
+      },
+      "10": {
+        "autocorr_lag1": 0.0652,
+        "vol_bps": 17.0,
+        "samples": 1052,
+        "regime": "TRENDING/MOMENTUM"
+      },
+      "11": {
+        "autocorr_lag1": -0.0779,
+        "vol_bps": 20.5,
+        "samples": 1052,
+        "regime": "MEAN_REVERTING"
+      },
+      "12": {
+        "autocorr_lag1": -0.0193,
+        "vol_bps": 23.7,
+        "samples": 1052,
+        "regime": "RANDOM_WALK"
+      },
+      "13": {
+        "autocorr_lag1": 0.1,
+        "vol_bps": 30.9,
+        "samples": 1052,
+        "regime": "TRENDING/MOMENTUM"
+      },
+      "14": {
+        "autocorr_lag1": 0.0093,
+        "vol_bps": 34.5,
+        "samples": 1055,
+        "regime": "RANDOM_WALK"
+      },
+      "15": {
+        "autocorr_lag1": 0.0125,
+        "vol_bps": 34.4,
+        "samples": 1056,
+        "regime": "RANDOM_WALK"
+      },
+      "16": {
+        "autocorr_lag1": -0.0982,
+        "vol_bps": 27.4,
+        "samples": 1056,
+        "regime": "MEAN_REVERTING"
+      },
+      "17": {
+        "autocorr_lag1": -0.0406,
+        "vol_bps": 26.1,
+        "samples": 1056,
+        "regime": "MEAN_REVERTING"
+      },
+      "18": {
+        "autocorr_lag1": -0.0345,
+        "vol_bps": 23.5,
+        "samples": 1056,
+        "regime": "RANDOM_WALK"
+      },
+      "19": {
+        "autocorr_lag1": -0.1157,
+        "vol_bps": 21.8,
+        "samples": 1055,
+        "regime": "MEAN_REVERTING"
+      },
+      "20": {
+        "autocorr_lag1": 0.0257,
+        "vol_bps": 20.6,
+        "samples": 1056,
+        "regime": "RANDOM_WALK"
+      },
+      "21": {
+        "autocorr_lag1": -0.0633,
+        "vol_bps": 19.3,
+        "samples": 1056,
+        "regime": "MEAN_REVERTING"
+      },
+      "22": {
+        "autocorr_lag1": -0.0807,
+        "vol_bps": 24.9,
+        "samples": 1056,
+        "regime": "MEAN_REVERTING"
+      },
+      "23": {
+        "autocorr_lag1": -0.0593,
+        "vol_bps": 21.6,
+        "samples": 1056,
+        "regime": "MEAN_REVERTING"
+      }
+    }
+  },
+  "nasdaq_btc_lead_lag": {
+    "lead_lag_correlations": {
+      "lag_-4": 0.0064,
+      "lag_-3": -0.0076,
+      "lag_-2": 0.0061,
+      "lag_-1": 0.0238,
+      "lag_0": 0.4297,
+      "lag_1": 0.0012,
+      "lag_2": -0.0017,
+      "lag_3": -0.0067,
+      "lag_4": -0.0074
+    },
+    "nasdaq_lead_signal": {
+      "after_strong_nasdaq_up_btc_up_winrate": 0.4734,
+      "after_strong_nasdaq_down_btc_down_winrate": 0.4494,
+      "sample_size_up": 826,
+      "sample_size_down": 761
+    }
+  },
+  "tail_risk_15m": {
+    "btc_prob_move_over_05pct": 0.0445,
+    "btc_prob_move_over_10pct": 0.0064,
+    "gold_prob_move_over_05pct": 0.0264,
+    "gold_prob_move_over_10pct": 0.0044
+  },
+  "m1_microstructure": {
+    "spx_m1_autocorr_lag1": 0.0022,
+    "gold_m1_autocorr_lag1": -0.0085
+  }
+}

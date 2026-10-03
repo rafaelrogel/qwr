@@ -1,0 +1,40 @@
+{
+  "timestamp": 1790596420.5383506,
+  "elapsed_sec": 0.35,
+  "answers": {
+    "whale_stink_bid_viability": {
+      "choice": "TOXIC_ADVERSE_SELECTION",
+      "confidence": 0.97,
+      "probabilities": {
+        "POSITIVE_EV_LIQUIDITY_HARVESTING": 0.01,
+        "TOXIC_ADVERSE_SELECTION": 0.99,
+        "VIABLE_ONLY_WITH_CANCEL_ORACLE": 0.0
+      }
+    },
+    "travis_three_edges_relevance": {
+      "choice": "INCOMPLETE_OR_FLAWED",
+      "confidence": 0.25,
+      "probabilities": {
+        "UNIVERSAL_INTRADAY_TAXONOMY": 0.5,
+        "INCOMPLETE_OR_FLAWED": 0.5,
+        "DIRECTIONAL_MOMENTUM_STILL_DOMINATES": 0.0
+      }
+    },
+    "compounding_artifacts_warning": {
+      "choice": "STRICT_METRIC_ANCHORING_REQUIRED",
+      "confidence": 1.0,
+      "probabilities": {
+        "STRICT_METRIC_ANCHORING_REQUIRED": 1.0,
+        "UNRESTRICTED_AGENT_EXPLORATION": 0.0
+      }
+    },
+    "pfof_vs_clob_implication": {
+      "choice": "MAKER_REBATES_AND_SPREAD_CAPTURE_MATTERS",
+      "confidence": 1.0,
+      "probabilities": {
+        "MAKER_REBATES_AND_SPREAD_CAPTURE_MATTERS": 1.0,
+        "COMMISSIONS_ARE_IRRELEVANT": 0.0
+      }
+    }
+  }
+}

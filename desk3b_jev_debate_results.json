@@ -1,0 +1,32 @@
+{
+  "asymmetry_paradox_verdict": {
+    "choice": "critical_negative_expectancy",
+    "score": null,
+    "noul": null
+  },
+  "price_ceiling_recommendation": {
+    "choice": "strict_cap_0_65",
+    "score": null,
+    "noul": null
+  },
+  "timing_entry_optimization": {
+    "choice": "shift_earlier_450s_to_540s",
+    "score": null,
+    "noul": null
+  },
+  "bonereaper_defense_requirement": {
+    "choice": "mandatory_bonereaper",
+    "score": null,
+    "noul": null
+  },
+  "intellectual_consensus_score": {
+    "choice": null,
+    "score": 3.98,
+    "noul": null
+  },
+  "concluding_synthesis": {
+    "choice": null,
+    "score": null,
+    "noul": 0.2
+  }
+}

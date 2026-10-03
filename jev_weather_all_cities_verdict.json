@@ -1,0 +1,35 @@
+{
+  "timestamp": 1790635719.9714024,
+  "elapsed_sec": 0.31,
+  "results": {
+    "all_cities_vs_two": {
+      "choice": "approved_all_14_cities",
+      "confidence": 0.98,
+      "probabilities": {
+        "restrict_to_top_desert_hubs": 0.0,
+        "restrict_to_two_cities": 0.01,
+        "approved_all_14_cities": 0.98,
+        "reject_weather_trading": 0.01
+      }
+    },
+    "risk_and_execution_edge": {
+      "choice": "both_strict_mapping_and_penny_cap",
+      "confidence": 0.59,
+      "probabilities": {
+        "penny_clipping_cap": 0.09,
+        "both_strict_mapping_and_penny_cap": 0.69,
+        "reduce_scan_frequency": 0.0,
+        "strict_station_ticker_mapping": 0.22
+      }
+    },
+    "paper_to_live_readiness": {
+      "choice": "optimal_paper_setup",
+      "confidence": 1.0,
+      "probabilities": {
+        "reduce_to_10_slots": 0.0,
+        "upgrade_to_live_immediately": 0.0,
+        "optimal_paper_setup": 1.0
+      }
+    }
+  }
+}

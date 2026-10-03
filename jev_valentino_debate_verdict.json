@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790534448.716508,
+  "elapsed_sec": 0.38,
+  "q1_absorption_squeeze": {
+    "choice": "highly_valuable_alpha_generator",
+    "confidence": 0.65,
+    "probabilities": {
+      "unreliable_in_crypto": 0.09,
+      "redundant_with_existing_cvd_breakout": 0.14,
+      "highly_valuable_alpha_generator": 0.77
+    }
+  },
+  "q2_intraday_house_money_score": {
+    "score": 1.58,
+    "confidence": 0.35
+  },
+  "q3_multi_desk_vs_single": {
+    "choice": "algorithmic_multi_desk_is_strictly_superior",
+    "confidence": 0.98,
+    "probabilities": {
+      "concentrate_on_top_3_desks": 0.01,
+      "algorithmic_multi_desk_is_strictly_superior": 0.99,
+      "single_asset_scalping_is_best": 0.0
+    }
+  },
+  "q4_lvn_velocity_prob": {
+    "noul": 0.43
+  },
+  "q5_top_actionable_rec": {
+    "choice": "implement_absorption_squeeze_reversal_module",
+    "confidence": 0.83,
+    "probabilities": {
+      "implement_absorption_squeeze_reversal_module": 0.89,
+      "implement_intraday_house_money_ratchet": 0.1,
+      "keep_code_untouched_and_monitor_current_run": 0.01
+    }
+  }
+}

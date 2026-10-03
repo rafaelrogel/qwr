@@ -1,0 +1,13 @@
+{
+  "timestamp": 1790701903.8566973,
+  "elapsed_sec": 0.36,
+  "analysis": {
+    "choice": "no_action_needed",
+    "confidence": 0.59,
+    "probs": {
+      "adjust_spread_gate": 0.02,
+      "new_desk_suggestion": 0.25,
+      "no_action_needed": 0.73
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "timestamp": 1790455616.426255,
+  "eth": {
+    "symbol": "ETHUSDT",
+    "trades_analyzed": 2000000,
+    "completed_candles": 1477,
+    "wr_drift_pct": 92.42,
+    "wr_ofi_pct": 64.09,
+    "wr_concordant_pct": 94.05,
+    "divergent_reversal_pct": 9.09,
+    "divergent_count": 22
+  },
+  "sol": {
+    "symbol": "SOLUSDT",
+    "trades_analyzed": 2000000,
+    "completed_candles": 5765,
+    "wr_drift_pct": 93.3,
+    "wr_ofi_pct": 66.23,
+    "wr_concordant_pct": 94.72,
+    "divergent_reversal_pct": 11.54,
+    "divergent_count": 26
+  }
+}

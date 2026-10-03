@@ -1,0 +1,27 @@
+{
+  "root_cause_diagnosis": {
+    "choice": "tight_photofinish_and_zero_stoploss",
+    "score": null,
+    "noul": null
+  },
+  "bonereaper_stoploss_calibration": {
+    "choice": "activate_late_sl_if_bid_above_15c",
+    "score": null,
+    "noul": null
+  },
+  "spot_vs_twap_alignment_gate": {
+    "choice": "strict_dual_alignment_required",
+    "score": null,
+    "noul": null
+  },
+  "photofinish_risk_score": {
+    "choice": null,
+    "score": 3.95,
+    "noul": null
+  },
+  "synthesis_recommendation": {
+    "choice": null,
+    "score": null,
+    "noul": 0.6
+  }
+}

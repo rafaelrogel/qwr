@@ -1,0 +1,29 @@
+{
+  "timestamp": 1790438143.5105464,
+  "elapsed": 0.293795108795166,
+  "q1_batch_architecture": {
+    "choice": "institutional_grade_control",
+    "confidence": 0.89,
+    "probabilities": {
+      "acceptable_with_minor_leaks": 0.06,
+      "problematic_or_unsafe": 0.02,
+      "institutional_grade_control": 0.92
+    }
+  },
+  "q2_dashboard_ux": {
+    "choice": "functional_but_needs_pnl_polish",
+    "confidence": 0.27,
+    "probabilities": {
+      "functional_but_needs_pnl_polish": 0.51,
+      "inferior_to_previous": 0.0,
+      "superior_operational_cockpit": 0.49
+    }
+  },
+  "q3_performance_score": {
+    "score": 2.95,
+    "confidence": 0.94
+  },
+  "q4_readiness_prob": {
+    "noul": 0.39
+  }
+}

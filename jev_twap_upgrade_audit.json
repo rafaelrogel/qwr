@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790387757.6182775,
+  "elapsed": 0.3293752670288086,
+  "q1_diagnosis": {
+    "choice": "flawless_diagnosis",
+    "confidence": 0.42,
+    "probabilities": {
+      "partially_correct": 0.38,
+      "flawless_diagnosis": 0.61,
+      "flawed": 0.01
+    }
+  },
+  "q2_convergence": {
+    "choice": "critical_edge_protection",
+    "confidence": 1.0,
+    "probabilities": {
+      "ineffective": 0.0,
+      "overly_restrictive": 0.0,
+      "critical_edge_protection": 1.0
+    }
+  },
+  "q3_math_defense": {
+    "choice": "institutional_grade_math",
+    "confidence": 0.99,
+    "probabilities": {
+      "unnecessary": 0.0,
+      "institutional_grade_math": 1.0,
+      "premature_shakeout": 0.0
+    }
+  },
+  "q4_quant_score": {
+    "score": 3.85,
+    "confidence": 0.88
+  },
+  "q5_preservation_prob": {
+    "noul": 0.69
+  }
+}

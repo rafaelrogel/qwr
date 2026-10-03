@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790535868.0968094,
+  "elapsed_sec": 0.38,
+  "q1_gex_regime_filter": {
+    "choice": "unnecessary_overhead_for_15m",
+    "confidence": 0.23,
+    "probabilities": {
+      "unnecessary_overhead_for_15m": 0.49,
+      "redundant_with_deadband": 0.06,
+      "essential_regime_enhancement": 0.45
+    }
+  },
+  "q2_two_stage_vs_latency": {
+    "choice": "immediate_execution_with_clob_limit_is_superior",
+    "confidence": 0.61,
+    "probabilities": {
+      "two_stage_retest_is_strictly_superior": 0.09,
+      "hybrid_allocation": 0.17,
+      "immediate_execution_with_clob_limit_is_superior": 0.74
+    }
+  },
+  "q3_two_loss_streak_score": {
+    "score": 2.6,
+    "confidence": 0.58
+  },
+  "q4_volume_participation_prob": {
+    "noul": 0.62
+  },
+  "q5_desk12_vs_enrich": {
+    "choice": "enrich_existing_desks_strictly",
+    "confidence": 0.98,
+    "probabilities": {
+      "enrich_existing_desks_strictly": 0.99,
+      "pause_new_implementations": 0.0,
+      "launch_desk_12_nasdaq": 0.01
+    }
+  }
+}

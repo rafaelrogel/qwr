@@ -27,6 +27,25 @@ import urllib.request
 import threading
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
+import math
+from risk_gate import (
+    atomic_write_json,
+    safe_read_json,
+    check_pre_trade_gate,
+    is_system_halted,
+    validate_executable_edge_gate,
+    compute_dynamic_stake,
+    get_dynamic_deadband_gate,
+    validate_clob_spread_gate
+)
+from execution_math import (
+    calculate_vwap_ask,
+    calculate_vwap_bid,
+    calculate_executable_edge,
+    compute_fractional_kelly_stake,
+    bayesian_fair_value
+)
+from anti_sweep_shield import evaluate_anti_sweep_shield
 
 # Garante suporte a UTF-8 no Windows
 if sys.platform == "win32":
@@ -80,6 +99,8 @@ PRIMARY_MIN_PRICE = 0.35          # Preço mínimo de entrada (35¢)
 MAX_CLOB_SPREAD = 0.08            # Spread máximo aceito no book (8¢)
 TAKE_PROFIT_PRICE = 0.86          # Take Profit antecipado (86¢)
 STOP_LOSS_MIN_BID = 0.15          # Bid mínimo aceito para Stop Loss na CLOB
+REVERSAL_MULTIPLIER = 1.8          # Multiplicador do deadband para confirmar reversão real (evita ruído de repique)
+STOP_LOSS_MIN_TIME_SEC = 200      # Tempo mínimo decorrido (200s / 3m20s) para avaliar stop-loss (dá espaço para respirar)
 EVAL_POINT_SEC = 135              # 135s (2m15s da vela de 5m)
 REQUIRE_PRIOR_CANDLE = True       # Filtro Jev Trend Continuation
 
@@ -229,7 +250,9 @@ def get_clob_orderbook(token_id: str) -> Optional[Dict[str, Any]]:
                 "sum_ask_size": round(sum_ask_size, 2),
                 "top_imbalance": round(top_imbalance, 3),
                 "depth_imbalance": round(depth_imbalance, 3),
-                "microprice": round(microprice, 4)
+                "microprice": round(microprice, 4),
+                "bids_raw": bids,
+                "asks_raw": asks
             }
     except Exception:
         return None
@@ -238,7 +261,7 @@ def get_clob_orderbook(token_id: str) -> Optional[Dict[str, Any]]:
 class SolanaTrader5M:
     def __init__(self):
         self.mode = SOL_MODE
-        self.balance = 29.6506 # Saldo padrão / paper
+        self.balance = 20.7094 # Saldo real inicial / compartilhado Safe
         self.trades = []
         self.current_open_position = None
         self.traded_windows = set()
@@ -271,7 +294,10 @@ class SolanaTrader5M:
             print("-> [MODO PAPER ATIVO]: Operando com simulação no Order Book L2 real.")
 
     def get_usdc_balance(self) -> float:
-        """Consulta o saldo real de USDC na conta Polymarket via CLOB V2"""
+        """Consulta o saldo real de USDC na conta Polymarket via CLOB V2.
+        Em caso de falha de rede/timeout, retorna o saldo em cache (self.balance)
+        em vez de -1.0, evitando que a trava de segurança ($15) seja acionada
+        falsamente por instabilidade de API."""
         if self.mode == "PAPER":
             return self.balance
         if not self.client:
@@ -284,8 +310,11 @@ class SolanaTrader5M:
             self.balance = round(bal, 4)
             return self.balance
         except Exception as e:
-            print(f"[Aviso ao buscar saldo SOL]: {e}")
-            return -1.0
+            # CORRECAO JEV: Retorna saldo em cache para evitar trava falsa.
+            # -1.0 causaria -1.0 < 15.00 = True → bot paralisado silenciosamente.
+            cached = self.balance if self.balance > 0 else 0.0
+            print(f"[AVISO API SALDO SOL]: Falha ao consultar CLOB ({e}). Usando saldo em cache: ${cached:.4f} USDC.")
+            return cached
 
     def get_token_balance(self, token_id: str) -> float:
         """Consulta o saldo real de cotas de um token condicional na carteira Safe"""
@@ -301,8 +330,40 @@ class SolanaTrader5M:
         except Exception:
             return 0.0
 
+    def get_latest_clob_fill(self, token_id: str, side: str = "SELL", min_timestamp: Optional[int] = None) -> Optional[dict]:
+        """Obtém o fill mais recente na CLOB filtrado estritamente por token, lado e timestamp"""
+        if not self.client or not token_id:
+            return None
+        try:
+            trades = self.client.get_trades()
+            if not trades:
+                return None
+            sorted_trades = sorted(trades, key=lambda x: int(x.get("match_time", 0)), reverse=True)
+            for tr in sorted_trades:
+                if tr.get("side") != side:
+                    continue
+                if str(tr.get("asset_id", "")) != str(token_id):
+                    continue
+                m_time = int(tr.get("match_time", 0))
+                if min_timestamp and m_time < (min_timestamp - 30):
+                    continue
+                return {
+                    "price": float(tr.get("price", 0.0)),
+                    "size": float(tr.get("size", 0.0)),
+                    "tx_hash": tr.get("transaction_hash", ""),
+                    "match_time": m_time
+                }
+        except Exception as e:
+            print(f"[get_latest_clob_fill erro]: {e}")
+        return None
+
     def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None) -> Dict[str, Any]:
         """Cria e envia ordem a mercado real para o Polymarket CLOB V2 (BUY em USDC, SELL em cotas)"""
+        halted, halt_msg = is_system_halted()
+        if halted:
+            print(f"🛑 [RISK GATE VETO]: Tentativa de ordem bloqueada ({halt_msg})")
+            return {"status": "ERROR", "error": f"VETO_KILL_SWITCH: {halt_msg}"}
+
         if self.mode == "PAPER":
             mock_id = f"paper-{int(time.time()*1000)}"
             mock_tx = f"0xpaper{int(time.time()*1000):016x}"
@@ -333,6 +394,40 @@ class SolanaTrader5M:
             return {"status": "SUCCESS", "response": resp}
         except Exception as e:
             err_str = str(e)
+            # Reconciliação Anti-Trade Fantasma:
+            # Em caso de timeout de rede (ex: 'The read operation timed out'), a API pode ter executado a ordem.
+            if side == "BUY":
+                try:
+                    time.sleep(1.5)
+                    tok_bal = self.get_token_balance(token_id)
+                    if tok_bal and tok_bal >= 0.5:
+                        print(f"       [🚨 RECUPERAÇÃO ANTI-FANTASMA]: Timeout de rede ocorreu, mas {tok_bal:.4f} cotas foram confirmadas na Safe!")
+                        return {
+                            "status": "SUCCESS",
+                            "response": {
+                                "orderID": "RECONCILED_ONCHAIN",
+                                "transactionsHashes": [],
+                                "reconciled": True
+                            }
+                        }
+                except Exception:
+                    pass
+            elif side == "SELL":
+                try:
+                    time.sleep(1.5)
+                    tok_bal = self.get_token_balance(token_id)
+                    if tok_bal is not None and tok_bal < 0.1:
+                        print(f"       [🚨 RECUPERAÇÃO ANTI-FANTASMA]: Timeout na venda, mas cotas foram zeradas na Safe (venda confirmada)!")
+                        return {
+                            "status": "SUCCESS",
+                            "response": {
+                                "orderID": "RECONCILED_ONCHAIN",
+                                "transactionsHashes": [],
+                                "reconciled": True
+                            }
+                        }
+                except Exception:
+                    pass
             return {"status": "FAILED", "error": err_str}
 
     def load_journal(self):
@@ -364,18 +459,10 @@ class SolanaTrader5M:
             "funder_verified": POLY_FUNDER_ADDRESS,
             "trades": self.trades
         }
-        try:
-            with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                json.dump(journal, f, indent=2)
-        except Exception as e:
-            print(f"[Erro ao gravar {JOURNAL_JSON}]: {e}")
+        atomic_write_json(JOURNAL_JSON, journal)
 
     def save_live_state(self, state: dict):
-        try:
-            with open(LIVE_STATE_JSON, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2)
-        except Exception:
-            pass
+        atomic_write_json(LIVE_STATE_JSON, state)
 
     def run_cycle(self):
         now_ts = int(time.time())
@@ -405,8 +492,13 @@ class SolanaTrader5M:
         # Se em modo LIVE, valida saldo e piso de proteção antes de prosseguir
         if self.mode == "LIVE":
             live_bal = self.get_usdc_balance()
+            # Guarda extra: saldo zero ou negativo indica falha total de API sem cache válido
+            if live_bal <= 0:
+                print(f"   [AVISO SALDO]: API retornou ${live_bal:.2f} sem cache valido. Pulando ciclo por cautela.")
+                time.sleep(10)
+                return
             if live_bal < 15.00:
-                print(f"   [🚨 TRAVA DE SEGURANÇA]: Saldo Safe (${live_bal:.2f} USDC) abaixo do piso de proteção ($15.00). Preservando depósito.")
+                print(f"   [TRAVA DE SEGURANCA]: Saldo Safe (${live_bal:.2f} USDC) abaixo do piso de protecao ($15.00). Preservando deposito.")
                 time.sleep(10)
                 return
             if live_bal < FIXED_STAKE:
@@ -450,7 +542,7 @@ class SolanaTrader5M:
                 continue
 
             delta = spot_now - strike
-            dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike * DEADBAND_BPS, 4))
+            dynamic_deadband, sol_regime = get_dynamic_deadband_gate(strike, base_bps=DEADBAND_BPS, min_floor=DEADBAND_MIN_FLOOR, symbol="SOLUSDT")
 
             # Consulta livros de ordens reais na CLOB da Polymarket
             book_up = get_clob_orderbook(token_up) if token_up else None
@@ -475,7 +567,7 @@ class SolanaTrader5M:
                 status_sig = f"Monitorando CLOB Polymarket (Restam {EVAL_POINT_SEC - cur_elapsed}s para decisão)"
             else:
                 if abs(delta) < dynamic_deadband:
-                    status_sig = f"Deadband Ativo: Delta (${delta:+.3f}) no ruído (< ${dynamic_deadband:.3f})"
+                    status_sig = f"Deadband Ativo: Delta (${delta:+.3f}) no ruído (< ${dynamic_deadband:.3f} | Regime: {sol_regime.get('regime')} {sol_regime.get('deadband_multiplier')}x)"
                 else:
                     status_sig = f"Sinal Intra-Vela: {candidate_side} | Delta: ${delta:+.3f} (Deadband: ${dynamic_deadband:.3f})"
 
@@ -491,6 +583,8 @@ class SolanaTrader5M:
                 "strike": strike,
                 "delta": delta,
                 "deadband": dynamic_deadband,
+                "diurnal_regime": sol_regime.get("regime", "NEUTRAL"),
+                "deadband_mult": sol_regime.get("deadband_multiplier", 1.0),
                 "seconds_elapsed": cur_elapsed,
                 "seconds_left": cur_left,
                 "progress_pct": min(100.0, round((cur_elapsed / 300.0) * 100.0, 1)),
@@ -551,26 +645,102 @@ class SolanaTrader5M:
                             print(f"      Best Bid: ${best_bid:.2f} | Best Ask: ${best_ask:.2f} | Spread: ${spread:.4f}")
                             print(f"      Microprice: ${microprice:.4f} | Tamanho Topo Ask: {ask_size:.1f} cotas")
 
-                            # Filtros de Execução Realista
-                            if spread > MAX_CLOB_SPREAD:
-                                print(f"   -> [🛡️ FILTRO SPREAD]: Spread de ${spread:.4f} > ${MAX_CLOB_SPREAD:.2f}. Abortando entrada por liquidez tóxica.")
+                            # Filtros de Execução Realista (Wiley 2025 / Aval JEV 90%)
+                            spread_ok, spread_msg, spread_info = validate_clob_spread_gate(
+                                spread=spread,
+                                best_bid=best_bid,
+                                best_ask=best_ask,
+                                top_ask_size=ask_size,
+                                target_stake_usd=FIXED_STAKE,
+                                max_tolerable_spread=0.050,
+                                optimal_spread_ceiling=0.035,
+                                delay_tolerable_spread=0.065
+                            )
+                            if not spread_ok:
+                                print(f"   -> [🛡️ FILTRO SPREAD CLOB]: {spread_msg}. Abortando entrada por liquidez tóxica.")
                             elif best_ask > PRIMARY_MAX_PRICE:
                                 print(f"   -> [🛡️ FILTRO TETO DE PREÇO]: Best Ask ${best_ask:.2f} > ${PRIMARY_MAX_PRICE:.2f}. EV desfavorável.")
                             elif best_ask < PRIMARY_MIN_PRICE:
                                 print(f"   -> [🛡️ FILTRO PISO DE PREÇO]: Best Ask ${best_ask:.2f} < ${PRIMARY_MIN_PRICE:.2f}. Risco de reversão assimétrica.")
-                            elif ask_size < (FIXED_STAKE / best_ask):
-                                print(f"   -> [🛡️ FILTRO PROFUNDIDADE]: Volume no topo ({ask_size:.1f} cotas) insuficiente para preencher ${FIXED_STAKE:.2f}.")
                             else:
+                                # Pricing Black-Scholes + Bayesiano para SOL
+                                sec_left = max(1, 300 - int(cur_time - window_ts))
+                                eff_vol = 0.55  # Volatilidade intra-vela de SOL (~55%)
+                                tau = max(1.0, float(sec_left)) / (365.25 * 24 * 3600)
+                                sig_sqrt_tau = eff_vol * math.sqrt(tau)
+                                d2 = (math.log(max(1.0, spot_now) / max(1.0, strike)) - 0.5 * (eff_vol ** 2) * tau) / max(1e-9, sig_sqrt_tau)
+                                bs_prob_up = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+                                bs_fair = bs_prob_up if candidate_side == "UP" else (1.0 - bs_prob_up)
+
+                                p_sig = 0.65 if target_book.get("top_imbalance", 0) > 0.1 else (0.35 if target_book.get("top_imbalance", 0) < -0.1 else 0.50)
+                                model_fair_value = bayesian_fair_value(
+                                    prior_prob=bs_fair,
+                                    p_signal_if_outcome=p_sig if candidate_side == "UP" else (1.0 - p_sig),
+                                    p_signal_if_alternative=0.50,
+                                    collinearity_discount=0.75
+                                )
+
+                                # Dimensionamento por Kelly Fracionário (25% Kelly com Bounds Institucionais)
+                                real_bal = self.get_usdc_balance() if self.mode == "LIVE" else self.balance
+                                btc_reserve = 3.00 if self.mode == "LIVE" else 0.00
+                                cur_bankroll = max(10.0, real_bal - btc_reserve)
+                                min_stake_val = 1.00
+                                max_stake_val = min(2.50, max(1.00, round(cur_bankroll * 0.08, 2)))
+                                target_stake, kelly_status = compute_dynamic_stake(
+                                    bankroll=cur_bankroll,
+                                    win_probability=model_fair_value,
+                                    entry_price=best_ask,
+                                    fallback_stake=FIXED_STAKE,
+                                    kelly_fraction=0.25,
+                                    min_stake=min_stake_val,
+                                    max_stake=max_stake_val
+                                )
+
+                                if target_stake <= 0.0:
+                                    print(f"   -> [🛡️ VETO KELLY FRACIONÁRIO]: {kelly_status}. Edge insuficiente.")
+                                    continue
+
+                                # VWAP na profundidade real do livro
+                                asks_raw = target_book.get("asks_raw", [])
+                                vwap_price, vwap_cost, vwap_shares, slip_bps = calculate_vwap_ask(asks_raw, target_usd=target_stake)
+
+                                if vwap_price is None:
+                                    print(f"   -> [🛡️ FILTRO DE PROFUNDIDADE VWAP]: Livro raso! Profundidade (${vwap_cost:.2f}) insuficiente para ${target_stake:.2f}.")
+                                    continue
+
+                                # Validação Centralizada no RiskGate
+                                gate_ok, gate_msg = check_pre_trade_gate(
+                                    desk_id="DESK2_SOL_5M",
+                                    target_side=candidate_side,
+                                    stake=target_stake,
+                                    spot_price=spot_now,
+                                    strike_price=strike,
+                                    oracle_timestamp=time.time(),
+                                    current_balance=cur_bankroll,
+                                    execution_mode=self.mode,
+                                    fair_value=model_fair_value,
+                                    vwap_price=vwap_price,
+                                    min_net_edge=0.015
+                                )
+                                if not gate_ok:
+                                    print(f"   -> [🛡️ RISK GATE VETO]: {gate_msg}")
+                                    continue
+
+                                print(f"   💎 [EXECUÇÃO APROVADA - VWAP + KELLY]:")
+                                print(f"      Fair Value: {model_fair_value:.2%} | VWAP Fill: ${vwap_price:.4f} (Slippage: {slip_bps:.1f} bps)")
+                                print(f"      Stake Kelly (25%): ${target_stake:.2f} ({kelly_status}) | Cotas: {vwap_shares:.2f}")
+
+                                exec_price = vwap_price
+
                                 if self.mode == "LIVE":
                                     print(f"\n   🚀 [ENVIANDO ORDEM REAL POLYMARKET CLOB V2 ({candidate_side})]:")
-                                    print(f"      Token: {target_token[:14]}... | Preço: ${best_ask:.2f} | Stake: ${FIXED_STAKE:.2f} USDC")
-                                    order_res = self.place_live_order(target_token, "BUY", FIXED_STAKE, price=best_ask)
+                                    print(f"      Token: {target_token[:14]}... | Preço VWAP: ${exec_price:.4f} | Stake: ${target_stake:.2f} USDC")
+                                    order_res = self.place_live_order(target_token, "BUY", target_stake, price=exec_price)
                                     if order_res.get("status") == "SUCCESS":
                                         resp_data = order_res.get("response", {})
                                         order_id = resp_data.get("orderID") or "N/A"
                                         tx_hashes = resp_data.get("transactionsHashes") or []
                                         tx_hash = tx_hashes[0] if tx_hashes else order_id
-                                        exec_price = best_ask
 
                                         # Verificacao rigorosa de cotas reais recebidas na carteira Safe
                                         time.sleep(1.5)
@@ -593,7 +763,7 @@ class SolanaTrader5M:
                                             "strike": strike,
                                             "entry_price": exec_price,
                                             "shares": shares,
-                                            "stake": FIXED_STAKE,
+                                            "stake": target_stake,
                                             "entry_time": cur_time,
                                             "clob_spread": spread,
                                             "clob_best_bid": best_bid,
@@ -605,12 +775,38 @@ class SolanaTrader5M:
                                         print(f"      -> ORDEM REAL EXECUTADA COM SUCESSO! ID: {order_id} | Tx: {tx_hash}")
                                         print(f"      -> Cotas confirmadas em carteira: {shares} | Saldo Restante: ${self.balance:,.2f} USDC")
                                     else:
-                                        print(f"      [❌ ERRO AO EXECUTAR ORDEM REAL]: {order_res.get('error')}")
+                                        # Dupla verificação no loop principal contra falha/timeout
+                                        time.sleep(1.0)
+                                        rec_tok = self.get_token_balance(target_token)
+                                        if rec_tok is not None and rec_tok >= 0.5:
+                                            shares = round(rec_tok, 4)
+                                            self.get_usdc_balance()
+                                            self.current_open_position = {
+                                                "window_ts": window_ts,
+                                                "time_str": dt_str,
+                                                "market_slug": market_slug,
+                                                "token_id": target_token,
+                                                "direction": candidate_side,
+                                                "strike": strike,
+                                                "entry_price": exec_price,
+                                                "shares": shares,
+                                                "stake": target_stake,
+                                                "entry_time": cur_time,
+                                                "clob_spread": spread,
+                                                "clob_best_bid": best_bid,
+                                                "clob_best_ask": best_ask,
+                                                "order_id": "RECONCILED_ONCHAIN",
+                                                "tx_hash": "RECONCILED_ONCHAIN",
+                                                "mode": "LIVE"
+                                            }
+                                            print(f"      [🚨 RECUPERAÇÃO DE ENTRADA]: Resposta indicou erro ({order_res.get('error')}), mas {shares:.4f} cotas foram confirmadas na Safe!")
+                                            print(f"      -> Posição assumida com sucesso para gestão quantitativa!")
+                                        else:
+                                            print(f"      [❌ ERRO AO EXECUTAR ORDEM REAL]: {order_res.get('error')}")
                                 else:
                                     # EXECUÇÃO PAPER HIPER-REALISTA
-                                    exec_price = best_ask
-                                    shares = round(FIXED_STAKE / exec_price, 4)
-                                    self.balance -= FIXED_STAKE
+                                    shares = round(target_stake / exec_price, 4)
+                                    self.balance -= target_stake
 
                                     self.current_open_position = {
                                         "window_ts": window_ts,
@@ -621,7 +817,7 @@ class SolanaTrader5M:
                                         "strike": strike,
                                         "entry_price": exec_price,
                                         "shares": shares,
-                                        "stake": FIXED_STAKE,
+                                        "stake": target_stake,
                                         "entry_time": cur_time,
                                         "clob_spread": spread,
                                         "clob_best_bid": best_bid,
@@ -630,8 +826,8 @@ class SolanaTrader5M:
                                     }
 
                                     print(f"\n   🚀 [ORDEM PAPER PREENCHIDA NO LIVRO REAL!]:")
-                                    print(f"      Lado: {candidate_side} | Preço Taker (Best Ask): ${exec_price:.2f}")
-                                    print(f"      Cotas: {shares} | Investimento: ${FIXED_STAKE:.2f} USD")
+                                    print(f"      Lado: {candidate_side} | Preço Taker VWAP: ${exec_price:.4f}")
+                                    print(f"      Cotas: {shares} | Investimento: ${target_stake:.2f} USD")
                                     print(f"      Saldo Restante: ${self.balance:,.2f} USD")
 
             # -------------------------------------------------------------
@@ -666,14 +862,20 @@ class SolanaTrader5M:
                                 resp_data = tp_res.get("response", {})
                                 tp_order_id = resp_data.get("orderID") or "N/A"
                                 tp_hashes = resp_data.get("transactionsHashes") or []
-                                tp_tx = tp_hashes[0] if tp_hashes else tp_order_id
-                                payout = round(sell_shares * sell_price, 4)
+                                resp_tp_p = resp_data.get("price")
+                                actual_tp_price = resp_tp_p if (resp_tp_p is not None and resp_tp_p > 0) else sell_price
+                                if self.client:
+                                    fill = self.get_latest_clob_fill(pos["token_id"], side="SELL", min_timestamp=window_ts)
+                                    if fill:
+                                        actual_tp_price = fill["price"]
+                                        tp_tx = fill["tx_hash"] or tp_tx
+                                payout = round(sell_shares * actual_tp_price, 4)
                                 pnl = round(payout - pos["stake"], 4)
                                 time.sleep(1.0)
                                 self.get_usdc_balance()
 
                                 print(f"   -> TAKE-PROFIT REAL EXECUTADO! ID: {tp_order_id} | Tx: {tp_tx}")
-                                print(f"   -> Payout: ${payout:.2f} | P&L: {pnl:+.2f} USDC | Novo Saldo: ${self.balance:,.2f} USDC")
+                                print(f"   -> Cotas Vendidas @ ${actual_tp_price:.2f} | Payout: ${payout:.2f} | P&L: {pnl:+.2f} USDC | Novo Saldo: ${self.balance:,.2f} USDC")
 
                                 self.save_journal({
                                     "cycle_ts": window_ts,
@@ -686,7 +888,7 @@ class SolanaTrader5M:
                                     "shares": sell_shares,
                                     "result": "VITÓRIA (TAKE-PROFIT CLOB REAL)",
                                     "sold_early": True,
-                                    "sell_price": sell_price,
+                                    "sell_price": actual_tp_price,
                                     "payout": payout,
                                     "pnl": pnl,
                                     "order_id": tp_order_id,
@@ -731,9 +933,28 @@ class SolanaTrader5M:
                             time.sleep(cur_left)
                             return
 
-                    # 3B. Stop-Loss de Emergência (Bonereaper) se delta reverter contra a posição
-                    reversal = (pos["direction"] == "UP" and delta <= -dynamic_deadband) or (pos["direction"] == "DOWN" and delta >= dynamic_deadband)
-                    if cur_elapsed >= 160 and reversal and cur_best_bid >= STOP_LOSS_MIN_BID:
+                    # 3B. Stop-Loss de Emergência Calibrado Anti-Whipsaw (1.8x deadband e tempo >= 200s)
+                    # Exige reversão real além do micro-ruído (~9.0 bps / ~$0.11 na Solana) para evitar liquidação precipitada
+                    sol_rev_threshold = round(dynamic_deadband * REVERSAL_MULTIPLIER, 4)
+                    reversal = (pos["direction"] == "UP" and delta <= -sol_rev_threshold) or (pos["direction"] == "DOWN" and delta >= sol_rev_threshold)
+                    if cur_elapsed >= STOP_LOSS_MIN_TIME_SEC and reversal and cur_best_bid >= STOP_LOSS_MIN_BID:
+                        # Escudo Anti-Sweep (Ziad Francis SMC): Veta stop-loss se for apenas absorção transitória de liquidez (wick)
+                        sweep_check = evaluate_anti_sweep_shield(
+                            symbol="SOLUSDT",
+                            window_ts=window_ts,
+                            elapsed=cur_elapsed,
+                            target_side=pos["direction"],
+                            strike=pos["strike"],
+                            current_spot=spot_now,
+                            current_delta=delta,
+                            twap_delta=None
+                        )
+                        if sweep_check["is_sweep"] and cur_elapsed < 265:
+                            if int(cur_elapsed) % 10 < 3:
+                                print(f"    [🛡️ ANTI-SWEEP SHIELD (ZIAD ALGO)]: Veto de Stop-Loss na Solana aos {cur_elapsed:.0f}s! {sweep_check['reason']}")
+                            time.sleep(2)
+                            continue
+
                         sell_price = cur_best_bid
                         real_s = self.get_token_balance(pos["token_id"]) if self.mode == "LIVE" else pos["shares"]
                         raw_s = real_s if (real_s is not None and real_s >= 0.5) else pos["shares"]
@@ -742,7 +963,7 @@ class SolanaTrader5M:
 
                         if self.mode == "LIVE":
                             print(f"\n🚨 [ENVIANDO STOP-LOSS DE EMERGÊNCIA REAL!]:")
-                            print(f"   Delta reverteu ({delta:+.3f}). Vendendo {sell_shares:.2f} cotas (Best Bid: ${sell_price:.2f} | Limite: ${sl_limit_price:.2f})...")
+                            print(f"   Delta reverteu além da tolerância ({delta:+.3f} vs limiar +/-${sol_rev_threshold:.3f}). Vendendo {sell_shares:.2f} cotas (Best Bid: ${sell_price:.2f} | Limite: ${sl_limit_price:.2f})...")
                             try:
                                 if self.client:
                                     self.client.cancel_all()
@@ -753,14 +974,20 @@ class SolanaTrader5M:
                                 resp_data = sl_res.get("response", {})
                                 sl_order_id = resp_data.get("orderID") or "N/A"
                                 sl_hashes = resp_data.get("transactionsHashes") or []
-                                sl_tx = sl_hashes[0] if sl_hashes else sl_order_id
-                                payout = round(sell_shares * sell_price, 4)
+                                resp_sl_p = resp_data.get("price")
+                                actual_sl_price = resp_sl_p if (resp_sl_p is not None and resp_sl_p > 0) else sell_price
+                                if self.client:
+                                    fill = self.get_latest_clob_fill(pos["token_id"], side="SELL", min_timestamp=window_ts)
+                                    if fill:
+                                        actual_sl_price = fill["price"]
+                                        sl_tx = fill["tx_hash"] or sl_tx
+                                payout = round(sell_shares * actual_sl_price, 4)
                                 pnl = round(payout - pos["stake"], 4)
                                 time.sleep(1.0)
                                 self.get_usdc_balance()
 
                                 print(f"   -> STOP-LOSS REAL EXECUTADO! ID: {sl_order_id} | Tx: {sl_tx}")
-                                print(f"   -> Saldo Resgatado: ${payout:.2f} | P&L: {pnl:+.2f} USDC | Novo Saldo: ${self.balance:,.2f} USDC")
+                                print(f"   -> Cotas Vendidas @ ${actual_sl_price:.2f} | Saldo Resgatado: ${payout:.2f} | P&L: {pnl:+.2f} USDC | Novo Saldo: ${self.balance:,.2f} USDC")
 
                                 self.save_journal({
                                     "cycle_ts": window_ts,
@@ -773,7 +1000,7 @@ class SolanaTrader5M:
                                     "shares": sell_shares,
                                     "result": "DEFESA (STOP-LOSS CLOB REAL)",
                                     "sold_early": True,
-                                    "sell_price": sell_price,
+                                    "sell_price": actual_sl_price,
                                     "payout": payout,
                                     "pnl": pnl,
                                     "order_id": sl_order_id,
@@ -870,18 +1097,55 @@ class SolanaTrader5M:
             self.traded_windows.add(window_ts)
 
     def start(self):
+        lock_path = os.path.join(BASE_DIR, "sol_trader.lock")
+        self.lock_file = _acquire_instance_lock(lock_path)
+        print(f"-> Instance Lock adquirido com sucesso: {lock_path}")
         print("\n" + "=" * 90)
         print("  INICIANDO BOT SOLANA 5-MINUTE ALGO TRADER (POLYMARKET CLOB)")
         print(f"  Modo Ativo: {self.mode} (LIVRO L2 REAL CONECTADO)")
         print(f"  Funder da Conta: {POLY_FUNDER_ADDRESS}")
         print(f"  Saldo Atual ({self.mode}): ${self.balance:.2f} USD")
         print("=" * 90)
-        while True:
-            try:
-                self.run_cycle()
-            except Exception as e:
-                print(f"[Erro no ciclo Solana]: {e}")
-            time.sleep(3)
+        try:
+            while True:
+                try:
+                    self.run_cycle()
+                except Exception as e:
+                    print(f"[Erro no ciclo Solana]: {e}")
+                time.sleep(3)
+        finally:
+            if hasattr(self, 'lock_file') and self.lock_file:
+                try:
+                    self.lock_file.close()
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+                except Exception:
+                    pass
+            print("-> Instance Lock da Solana liberado com sucesso.")
+
+def _acquire_instance_lock(lock_path: str):
+    """Garante que apenas uma instancia do Desk 2 esteja rodando por vez"""
+    if sys.platform == "win32":
+        import msvcrt
+        f = open(lock_path, "w")
+        try:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            return f
+        except OSError:
+            print("\n[ERRO FATAL] Outra instancia do Desk 2 (SOL) ja esta rodando (lock ativo). Abortando para evitar ordens duplicadas em dinheiro real.")
+            sys.exit(1)
+    else:
+        import fcntl
+        f = open(lock_path, "w")
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except IOError:
+            print("\n[ERRO FATAL] Outra instancia do Desk 2 (SOL) ja esta rodando (lock ativo). Abortando.")
+            sys.exit(1)
 
 # Aliases de compatibilidade
 SolanaPaperTrader5M = SolanaTrader5M

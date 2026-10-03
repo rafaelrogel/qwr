@@ -1,0 +1,49 @@
+{
+  "validation_daily_trap_confirmation": {
+    "verdict": "CONFIRMED_NEGATIVE_EV_FAT_TAILS",
+    "confidence": 1.0,
+    "probabilities": {
+      "CONFIRMED_NEGATIVE_EV_FAT_TAILS": 1.0,
+      "STRATEGY_WAS_JUST_UNLUCKY": 0.0,
+      "WIDEN_STRIKES_WOULD_SOLVE": 0.0
+    }
+  },
+  "validation_eia_weekly_superiority": {
+    "verdict": "VALIDATED_ROBUST_INSTITUTIONAL_ALPHA",
+    "confidence": 0.72,
+    "probabilities": {
+      "VALIDATED_ROBUST_INSTITUTIONAL_ALPHA": 0.81,
+      "OVERFITTED_MODEL": 0.18,
+      "MARGINAL_VALUE": 0.01
+    }
+  },
+  "validation_15m_scalping_dominance": {
+    "verdict": "VALIDATED_PRIMARY_ENGINE",
+    "confidence": 0.8,
+    "probabilities": {
+      "TOO_HIGH_FREQUENCY": 0.1,
+      "VALIDATED_PRIMARY_ENGINE": 0.87,
+      "INDIFFERENT": 0.03
+    }
+  },
+  "final_portfolio_allocation": {
+    "verdict": "ALLOCATION_DESK5_AND_DESK4_ELIMINATE_DAILY",
+    "confidence": 1.0,
+    "probabilities": {
+      "ALLOCATION_EQUAL_ALL": 0.0,
+      "ALLOCATION_DAILY_ONLY": 0.0,
+      "ALLOCATION_DESK5_AND_DESK4_ELIMINATE_DAILY": 1.0
+    }
+  },
+  "audit_score_overall": {
+    "score": 3.33,
+    "confidence": 0.44,
+    "probabilities": {
+      "0": 0.05,
+      "1": 0.01,
+      "2": 0.07,
+      "3": 0.31,
+      "4": 0.56
+    }
+  }
+}

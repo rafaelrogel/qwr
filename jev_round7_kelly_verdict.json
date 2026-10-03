@@ -1,0 +1,38 @@
+{
+  "timestamp": 1790523281.3938117,
+  "elapsed_sec": 0.4,
+  "q1_kalshi_kelly_verdict": {
+    "choice": "moderately_safe_requires_vigilance",
+    "confidence": 0.82,
+    "probabilities": {
+      "excessive_risk_for_small_bankroll": 0.1,
+      "highly_safe_and_mathematically_sound": 0.02,
+      "moderately_safe_requires_vigilance": 0.88
+    }
+  },
+  "q2_desk10_paper_kelly": {
+    "choice": "optimal_accelerates_learning_zero_risk",
+    "confidence": 0.99,
+    "probabilities": {
+      "inadequate_keep_fixed": 0.01,
+      "neutral_negligible_impact": 0.0,
+      "optimal_accelerates_learning_zero_risk": 0.99
+    }
+  },
+  "q3_anti_ruin_score": {
+    "score": 2.11,
+    "confidence": 0.63
+  },
+  "q4_alpha_acceleration_prob": {
+    "noul": 0.61
+  },
+  "q5_strategic_recommendation": {
+    "choice": "maintain_active_execution_and_compound_pnl",
+    "confidence": 0.34,
+    "probabilities": {
+      "pause_for_further_backtests": 0.42,
+      "maintain_active_execution_and_compound_pnl": 0.5700000000000001,
+      "revert_to_flat_bets": 0.01
+    }
+  }
+}

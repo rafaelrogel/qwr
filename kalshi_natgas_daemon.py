@@ -166,6 +166,11 @@ def consult_jev_consensus(pred_signal, degree_days, now_et):
     Execution Timestamp: {now_et.strftime('%Y-%m-%d %H:%M:%S')} ET (Wednesday Afternoon Sweet Spot)
     Contract: Kalshi EIA Weekly Storage Deviation
     
+    HISTORICAL VOLATILITY BENCHMARK (DATABENTO CME NYMEX HENRY HUB - 53 WEEKS):
+    - Historical post-EIA 15m displacement: 119.8 bps median (130.8 bps average).
+    - Contracts traded in 15m window during EIA: 3,500 to 7,500+.
+    - Confirms substantial institutional flow clearing consensus mispricings.
+
     PHYSICAL MODEL PROPOSITION:
     - Signal: {pred_signal['kalshi_actionable_signal']}
     - Model Predicted Storage Change: {pred_signal['model_forecast_bcf']} Bcf

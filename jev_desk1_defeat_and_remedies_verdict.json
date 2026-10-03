@@ -1,0 +1,33 @@
+{
+  "timestamp": 1790623474.3912156,
+  "elapsed_sec": 0.34,
+  "answers": {
+    "kelly_sizing_and_stake_cap_verdict": {
+      "choice": "APPROVE_STRICT_8PCT_CAP",
+      "confidence": 1.0,
+      "probabilities": {
+        "TOO_CONSERVATIVE_REDUCES_GROWTH": 0.0,
+        "APPROVE_STRICT_8PCT_CAP": 1.0,
+        "FIXED_STAKE_ONLY": 0.0
+      }
+    },
+    "anti_whipsaw_shield_215s_verdict": {
+      "choice": "APPROVE_ANTI_WHIPSAW_215S",
+      "confidence": 0.89,
+      "probabilities": {
+        "REJECT_LIQUIDITY_RISK_LATE_CANDLE": 0.07,
+        "EXTEND_TO_EXPIRATION_NO_STOP": 0.0,
+        "APPROVE_ANTI_WHIPSAW_215S": 0.93
+      }
+    },
+    "overall_systemic_resilience_verdict": {
+      "choice": "HIGH_ROBUSTNESS_READY_FOR_CONTINUED_LIVE",
+      "confidence": 0.4,
+      "probabilities": {
+        "HIGH_ROBUSTNESS_READY_FOR_CONTINUED_LIVE": 0.6,
+        "ACCEPTABLE_NEEDS_CONSTANT_SUPERVISION": 0.33,
+        "DOWNGRADE_TO_PAPER": 0.07
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "timestamp": 1790580738.4972208,
+  "elapsed_sec": 0.3,
+  "desk10_sample_trades": 71,
+  "desk10_win_rate": 40.8,
+  "desk1_sample_trades": 151,
+  "desk1_win_rate": 68.9,
+  "answers": {
+    "desk10_failure_verdict": {
+      "choice": "FUTURES_CVD_MISMATCH_AND_ADVERSE_SELECTION",
+      "confidence": 1.0,
+      "probabilities": {
+        "FUTURES_CVD_MISMATCH_AND_ADVERSE_SELECTION": 1.0,
+        "RANDOM_NOISE": 0.0,
+        "EXECUTION_SLIPPAGE_ONLY": 0.0
+      }
+    },
+    "action_plan_desk10": {
+      "choice": "DEMOTE_TO_DEFENSIVE_VETO_OR_SHUTDOWN",
+      "confidence": 1.0,
+      "probabilities": {
+        "KEEP_OPTIMIZING_OFFENSIVE_TRADING": 0.0,
+        "LAUNCH_LIVE_ANYWAY": 0.0,
+        "DEMOTE_TO_DEFENSIVE_VETO_OR_SHUTDOWN": 1.0
+      }
+    },
+    "philosophical_synthesis": {
+      "choice": "DRIFT_CONVERGENCE_BEATS_MICROSTRUCTURE_SPIKES",
+      "confidence": 1.0,
+      "probabilities": {
+        "DRIFT_CONVERGENCE_BEATS_MICROSTRUCTURE_SPIKES": 1.0,
+        "HIGH_FREQUENCY_ALWAYS_WINS": 0.0
+      }
+    }
+  }
+}

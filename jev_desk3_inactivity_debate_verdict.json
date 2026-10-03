@@ -1,0 +1,42 @@
+{
+  "timestamp": 1790838941.6086035,
+  "elapsed_sec": 0.32,
+  "answers": {
+    "dilemma1_market_discovery_architecture": {
+      "choice": "DETERMINISTIC_TICKER_AND_TIME_FILTER",
+      "confidence": 1.0,
+      "probabilities": {
+        "DETERMINISTIC_TICKER_AND_TIME_FILTER": 1.0,
+        "CURSOR_PAGINATION_FULL_SWEEP": 0.0,
+        "FALLBACK_POLLING_ONLY": 0.0
+      }
+    },
+    "dilemma2_kalshi_15m_statistical_edge": {
+      "choice": "APPROVE_15M_WITH_TREND_CONFIRMATION",
+      "confidence": 0.76,
+      "probabilities": {
+        "APPROVE_15M_WITH_TREND_CONFIRMATION": 0.84,
+        "EXPAND_DEADBAND_TO_REDUCE_FALSE_BREAKOUTS": 0.07,
+        "INFERIOR_TO_5M_POLYMARKET": 0.09
+      }
+    },
+    "dilemma3_risk_management_shard2_bankroll": {
+      "choice": "STRICT_SINGLE_CONTRACT_FIXED",
+      "confidence": 0.98,
+      "probabilities": {
+        "ALLOW_2_CONTRACTS_ON_HIGH_CONVICTION": 0.01,
+        "STRICT_SINGLE_CONTRACT_FIXED": 0.98,
+        "REVERT_TO_PAPER_UNTIL_DEPOSIT": 0.01
+      }
+    },
+    "intellectual_consensus_desk3_action": {
+      "choice": "APPLY_FIXES_AND_RESUME_LIVE_DESK3",
+      "confidence": 0.73,
+      "probabilities": {
+        "SHUTDOWN_DESK3": 0.01,
+        "KEEP_IN_PAPER_MODE": 0.17,
+        "APPLY_FIXES_AND_RESUME_LIVE_DESK3": 0.82
+      }
+    }
+  }
+}

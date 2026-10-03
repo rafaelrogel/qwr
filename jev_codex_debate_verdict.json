@@ -1,0 +1,33 @@
+{
+  "timestamp": 1790438712.00069,
+  "elapsed": 0.35791945457458496,
+  "q1_risk_gate": {
+    "choice": "essential_institutional_hardening",
+    "confidence": 0.99,
+    "probabilities": {
+      "essential_institutional_hardening": 1.0,
+      "unnecessary_overhead": 0.0,
+      "partial_solution": 0.0
+    }
+  },
+  "q2_desk7_reclass": {
+    "choice": "quantitatively_accurate_and_safe",
+    "confidence": 1.0,
+    "probabilities": {
+      "quantitatively_accurate_and_safe": 1.0,
+      "keep_calling_it_pure_arb": 0.0
+    }
+  },
+  "q3_fail_closed": {
+    "choice": "mandatory_fail_closed",
+    "confidence": 1.0,
+    "probabilities": {
+      "mandatory_fail_closed": 1.0,
+      "live_default_acceptable": 0.0
+    }
+  },
+  "q4_confidence_score": {
+    "score": 3.13,
+    "confidence": 0.79
+  }
+}
