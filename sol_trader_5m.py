@@ -36,7 +36,10 @@ from risk_gate import (
     validate_executable_edge_gate,
     compute_dynamic_stake,
     get_dynamic_deadband_gate,
-    validate_clob_spread_gate
+    validate_clob_spread_gate,
+    check_sol_cross_asset_beta_lag_gate,
+    check_dow_counter_trend_veto,
+    record_desk_trade_result
 )
 from execution_math import (
     calculate_vwap_ask,
@@ -46,6 +49,7 @@ from execution_math import (
     bayesian_fair_value
 )
 from anti_sweep_shield import evaluate_anti_sweep_shield
+from variable_bench import bench
 
 # Garante suporte a UTF-8 no Windows
 if sys.platform == "win32":
@@ -59,6 +63,7 @@ from py_clob_client_v2 import (
     ClobClient,
     SignatureTypeV2,
     MarketOrderArgsV2,
+    OrderArgsV2,
     OrderType,
     BalanceAllowanceParams,
     AssetType
@@ -91,22 +96,70 @@ SOL_MODE = ENV_CFG.get("SOL_MODE", "PAPER").upper()
 JOURNAL_JSON = os.path.join(BASE_DIR, "sol_trading_journal.json" if SOL_MODE == "LIVE" else "sol_paper_journal.json")
 
 # ===================== PARÂMETROS QUANTITATIVOS (JEV AI CALIBRATED) =====================
-FIXED_STAKE = 1.00                # $1.00 por aposta
-DEADBAND_BPS = 0.00050            # 5.0 bps (0.050%) do preço da SOL
-DEADBAND_MIN_FLOOR = 0.06         # Piso mínimo de $0.06 de variação na SOL
-PRIMARY_MAX_PRICE = 0.55          # Preço máximo de entrada (55¢)
-PRIMARY_MIN_PRICE = 0.35          # Preço mínimo de entrada (35¢)
-MAX_CLOB_SPREAD = 0.08            # Spread máximo aceito no book (8¢)
+FIXED_STAKE = 1.00                # $1.00 por aposta (Trava Estrita Micro-Institucional JEV / Benchmark Desk 1 & 3B)
+DEADBAND_BPS = 0.00080            # 8.0 bps (0.080%) do preço da SOL
+DEADBAND_MIN_FLOOR = 0.10         # Piso mínimo de $0.10 de variação na SOL (Blindagem contra micro-ruído)
+PRIMARY_MAX_PRICE = 0.55          # Preço máximo de entrada (55¢ - Alinhado estritamente com Desk 1 para EV positivo)
+PRIMARY_MIN_PRICE = 0.40          # Preço mínimo de entrada (40¢ - elimina cotas de cauda com spread tóxico)
+MAX_CLOB_SPREAD = 0.05            # Spread máximo aceito no book (5¢ - alinhado à liquidez institucional)
+MAX_ORACLE_STRIKE_DISCREPANCY_USD = 0.35 # Teto máximo de discrepância Binance vs Chainlink na abertura (~30 bps / JEV Shield)
 TAKE_PROFIT_PRICE = 0.86          # Take Profit antecipado (86¢)
 STOP_LOSS_MIN_BID = 0.15          # Bid mínimo aceito para Stop Loss na CLOB
-REVERSAL_MULTIPLIER = 1.8          # Multiplicador do deadband para confirmar reversão real (evita ruído de repique)
-STOP_LOSS_MIN_TIME_SEC = 200      # Tempo mínimo decorrido (200s / 3m20s) para avaliar stop-loss (dá espaço para respirar)
-EVAL_POINT_SEC = 135              # 135s (2m15s da vela de 5m)
+REVERSAL_MULTIPLIER = 1.8         # Multiplicador do deadband para confirmar reversão real (evita ruído de repique)
+STOP_LOSS_MIN_TIME_SEC = 200      # Tempo mínimo decorrido (200s / 3m20s) para avaliar stop-loss
+EVAL_POINT_SEC = 135              # 135s (2m15s da vela de 5m / 45% da vela - Sweet-Spot Institucional Desk 1)
 REQUIRE_PRIOR_CANDLE = True       # Filtro Jev Trend Continuation
+CHAINLINK_SOL_AGGREGATOR = "0x10C8264C0935b3B9870013e057f330Ff3e9C56dC" # Oráculo Oficial Chainlink SOL/USD Polygon Mainnet (8 dec)
 
-# ===================== DATA PROVIDERS (BINANCE REF) =====================
+# ===================== DATA PROVIDERS (CHAINLINK ON-CHAIN + BINANCE REF) =====================
+def get_chainlink_sol_price() -> Optional[float]:
+    """
+    Consulta a cotação oficial do Oráculo Chainlink SOL/USD (8 decimais)
+    diretamente no contrato AggregatorV3 da Polygon (0x10C8264C0935b3B9870013e057f330Ff3e9C56dC)
+    usando eth_call (latestRoundData selector 0xfeaf968c). Sub-segundo via RPC Polygon/Alchemy.
+    """
+    cfg = load_env_config()
+    custom_rpc = cfg.get("POLYGON_RPC_URL") or cfg.get("RPC_URL")
+    rpcs = [
+        "https://polygon-mainnet.g.alchemy.com/v2/alch_SpigbpkWNlbSTj_AbkO4I",
+        "https://polygon-bor.publicnode.com",
+        "https://polygon.drpc.org",
+        "https://gateway.tenderly.co/public/polygon",
+        "https://polygon.publicnode.com"
+    ]
+    if custom_rpc and custom_rpc not in rpcs:
+        rpcs.insert(0, custom_rpc)
+
+    payload = json.dumps({
+        "jsonrpc": "2.0",
+        "method": "eth_call",
+        "params": [
+            {"to": CHAINLINK_SOL_AGGREGATOR, "data": "0xfeaf968c"},
+            "latest"
+        ],
+        "id": 1
+    }).encode("utf-8")
+
+    for rpc in rpcs:
+        try:
+            req = urllib.request.Request(
+                rpc,
+                data=payload,
+                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=2.5) as r:
+                res = json.loads(r.read().decode("utf-8"))
+                if "result" in res and res["result"] and len(res["result"]) >= 130:
+                    ans_hex = res["result"][66:130]
+                    price = int(ans_hex, 16) / 1e8
+                    if price > 10.0:
+                        return round(price, 4)
+        except Exception:
+            continue
+    return None
+
 def get_binance_sol_spot() -> Optional[float]:
-    """Preço Spot em tempo real da Solana (SOL/USDT) na Binance"""
+    """Preço Spot em tempo real da Solana (SOL/USDT) na Binance (Referência e Fallback)"""
     urls = [
         "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT",
         "https://data-api.binance.vision/api/v3/ticker/price?symbol=SOLUSDT"
@@ -143,7 +196,7 @@ def get_binance_sol_5m_prior_candle() -> Optional[Dict[str, Any]]:
     return None
 
 def get_sol_candle_open(window_ts: int) -> Optional[float]:
-    """Obtém a abertura da vela de 5m correspondente ao window_ts"""
+    """Fallback: Obtém a abertura da vela de 5m correspondente ao window_ts na Binance"""
     url = f"https://api.binance.com/api/v3/klines?symbol=SOLUSDT&interval=5m&startTime={window_ts * 1000}&limit=1"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -265,6 +318,8 @@ class SolanaTrader5M:
         self.trades = []
         self.current_open_position = None
         self.traded_windows = set()
+        self.candle_strikes = {}
+        self.binance_opens = {}
         self.client: Optional[ClobClient] = None
 
         self.load_journal()
@@ -357,8 +412,8 @@ class SolanaTrader5M:
             print(f"[get_latest_clob_fill erro]: {e}")
         return None
 
-    def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None) -> Dict[str, Any]:
-        """Cria e envia ordem a mercado real para o Polymarket CLOB V2 (BUY em USDC, SELL em cotas)"""
+    def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None, post_only: bool = False) -> Dict[str, Any]:
+        """Cria e envia ordem real para o Polymarket CLOB V2 (BUY em USDC ou cotas, SELL em cotas; suporta post_only Maker)"""
         halted, halt_msg = is_system_halted()
         if halted:
             print(f"🛑 [RISK GATE VETO]: Tentativa de ordem bloqueada ({halt_msg})")
@@ -382,16 +437,29 @@ class SolanaTrader5M:
         order_price = price if price is not None else 0
 
         try:
-            market_args = MarketOrderArgsV2(
-                token_id=token_id,
-                amount=amount,
-                side=side,
-                price=order_price,
-                order_type=OrderType.FAK
-            )
-            signed_order = self.client.create_market_order(market_args)
-            resp = self.client.post_order(signed_order, order_type=OrderType.FAK)
-            return {"status": "SUCCESS", "response": resp}
+            if post_only and order_price > 0:
+                # Maker Inteligente (JEV Touch Quoting): Ordem limite Post-Only GTC que descansa no livro
+                calc_size = round(amount / order_price, 2) if side == "BUY" else round(amount, 2)
+                order_args = OrderArgsV2(
+                    token_id=token_id,
+                    price=order_price,
+                    size=calc_size,
+                    side=side
+                )
+                signed_order = self.client.create_order(order_args)
+                resp = self.client.post_order(signed_order, order_type=OrderType.GTC, post_only=True)
+                return {"status": "SUCCESS", "response": resp, "maker_post_only": True}
+            else:
+                market_args = MarketOrderArgsV2(
+                    token_id=token_id,
+                    amount=amount,
+                    side=side,
+                    price=order_price,
+                    order_type=OrderType.FAK
+                )
+                signed_order = self.client.create_market_order(market_args)
+                resp = self.client.post_order(signed_order, order_type=OrderType.FAK)
+                return {"status": "SUCCESS", "response": resp}
         except Exception as e:
             err_str = str(e)
             # Reconciliação Anti-Trade Fantasma:
@@ -460,6 +528,11 @@ class SolanaTrader5M:
             "trades": self.trades
         }
         atomic_write_json(JOURNAL_JSON, journal)
+        try:
+            is_win = ("VITÓRIA" in str(trade_data.get("result", "")).upper()) or (float(trade_data.get("pnl", 0.0)) >= 0)
+            record_desk_trade_result("desk2", is_win=is_win, pnl=float(trade_data.get("pnl", 0.0)))
+        except Exception:
+            pass
 
     def save_live_state(self, state: dict):
         atomic_write_json(LIVE_STATE_JSON, state)
@@ -469,7 +542,8 @@ class SolanaTrader5M:
         window_ts = (now_ts // 300) * 300
         elapsed_sec = now_ts - window_ts
         remaining_sec = max(0, 300 - elapsed_sec)
-        dt_str = datetime.fromtimestamp(window_ts, timezone.utc).strftime("%H:%M:%S")
+        dt_str = datetime.fromtimestamp(window_ts, timezone.utc).strftime("%d/%m/%Y %H:%M:%S")
+        time_only_str = datetime.fromtimestamp(window_ts, timezone.utc).strftime("%H:%M:%S")
 
         # Verificacao de Kill-Switch Global via Arquivo ('HALT' ou 'EMERGENCY_STOP')
         halt_file = os.path.join(BASE_DIR, "HALT")
@@ -488,6 +562,18 @@ class SolanaTrader5M:
         print(f"  Janela Ativa: {dt_str} UTC | Timestamp: {window_ts} | Restam: {remaining_sec}s")
         print(f"  Funder Verificado: {POLY_FUNDER_ADDRESS[:10]}... | Saldo {self.mode}: ${self.balance:,.2f} USD")
         print("=" * 90)
+
+        # Checagem do Variable Bench e Disjuntores (Universal 2-Loss + Coin-Flip - JEV AI)
+        journal_path = JOURNAL_JSON
+        is_benched, bench_reason, bench_rem = bench.check_consecutive_losses_breaker("desk2", journal_path, max_consecutive_losses=2, cooldown_seconds=1800)
+        if not is_benched:
+            is_benched, bench_reason, bench_rem = bench.check_coin_flip_breaker("desk2", journal_path)
+        if not is_benched:
+            is_benched, bench_reason, bench_rem = bench.is_benched("desk2")
+        if is_benched:
+            print(f"\n   [🛑 VARIABLE BENCH]: Desk 2 em cooldown ({bench_reason}) — restam {bench_rem:.1f}s. Aguardando...")
+            time.sleep(min(15, max(2, int(bench_rem))))
+            return
 
         # Se em modo LIVE, valida saldo e piso de proteção antes de prosseguir
         if self.mode == "LIVE":
@@ -523,6 +609,34 @@ class SolanaTrader5M:
             except Exception:
                 pass
 
+        # 2. Busca Strike Price Oficial (Oraculo Chainlink) e Abertura Binance
+        if window_ts in self.candle_strikes:
+            strike = self.candle_strikes[window_ts]
+        else:
+            strike = get_chainlink_sol_price()
+            if not strike or strike <= 0:
+                strike = get_sol_candle_open(window_ts) or get_binance_sol_spot()
+            if not strike or strike <= 0:
+                print(f"    [🚨 FALHA CRÍTICA DE ORÁCULO]: Impossível capturar Strike aos :00. Abortando janela {window_ts}.")
+                self.traded_windows.add(window_ts)
+                return
+            self.candle_strikes[window_ts] = strike
+
+        if window_ts in self.binance_opens:
+            binance_open = self.binance_opens[window_ts]
+        else:
+            binance_open = get_sol_candle_open(window_ts) or get_binance_sol_spot() or strike
+            if binance_open:
+                self.binance_opens[window_ts] = binance_open
+
+        # Discrepancy Shield (Binance vs Chainlink)
+        feed_diff = abs(binance_open - strike)
+        print(f"    Strike Oraculo Chainlink (K): ${strike:.4f} | Binance Ref: ${binance_open:.4f} (Spread: ${feed_diff:+.4f})")
+        if feed_diff > MAX_ORACLE_STRIKE_DISCREPANCY_USD:
+            print(f"    [🛡️ VETO DISCREPÂNCIA DE ORÁCULO]: Feed Binance (${binance_open:.4f}) diverge do Chainlink (${strike:.4f}) por ${feed_diff:.4f} (> ${MAX_ORACLE_STRIKE_DISCREPANCY_USD:.2f}). Abortando janela para proteger capital.")
+            self.traded_windows.add(window_ts)
+            return
+
         evaluated_entry = False
 
         # Loop de monitoramento contínuo da vela (a cada 2 segundos)
@@ -534,10 +648,9 @@ class SolanaTrader5M:
             if cur_elapsed >= 298:
                 break
 
-            # Consulta Spot e Strike
-            strike = get_sol_candle_open(window_ts)
-            spot_now = get_binance_sol_spot()
-            if not strike or not spot_now:
+            # Consulta Spot via Oráculo Chainlink Oficial (com Fallback Binance)
+            spot_now = get_chainlink_sol_price() or get_binance_sol_spot()
+            if not spot_now:
                 time.sleep(2)
                 continue
 
@@ -601,17 +714,50 @@ class SolanaTrader5M:
             self.save_live_state(state_payload)
 
             # -------------------------------------------------------------
-            # 2. PONTO QUANTITATIVO DE ENTRADA (135s)
+            # 2. PONTO QUANTITATIVO DE ENTRADA ({EVAL_POINT_SEC}s)
             # -------------------------------------------------------------
             if cur_elapsed >= EVAL_POINT_SEC and not evaluated_entry and self.current_open_position is None:
                 evaluated_entry = True
-                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🎯 PONTO DE DECISÃO QUANTITATIVA (135s):")
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🎯 PONTO DE DECISÃO QUANTITATIVA ({EVAL_POINT_SEC}s):")
                 print(f"   Strike: ${strike:.2f} | Spot Atual: ${spot_now:.2f} | Delta: ${delta:+.4f}")
                 print(f"   Deadband Dinâmico: ${dynamic_deadband:.4f} ({DEADBAND_BPS*10000:.1f} bps)")
 
-                if not candidate_side or not target_book:
-                    print(f"   -> [🛡️ FILTRO DEADBAND/LIVRO]: Delta (${delta:+.4f}) na zona morta ou book indisponível. Preservando capital.")
+                if not candidate_side:
+                    print(f"   -> [🛡️ FILTRO DEADBAND]: Delta (${delta:+.4f}) na zona morta (< ${dynamic_deadband:.4f}). Preservando capital.")
                 else:
+                    if not target_book:
+                        # Fallback de Gamma API se o orderbook CLOB estiver unilateral ou sem book bilateral
+                        gamma_p = None
+                        if market:
+                            try:
+                                out_prices = json.loads(market.get("outcomePrices", "[]")) if isinstance(market.get("outcomePrices"), str) else market.get("outcomePrices", [])
+                                t_idx = 0 if candidate_side == "UP" else 1
+                                if len(out_prices) > t_idx:
+                                    gamma_p = float(out_prices[t_idx])
+                            except Exception:
+                                pass
+                        if gamma_p and PRIMARY_MIN_PRICE <= gamma_p <= PRIMARY_MAX_PRICE:
+                            target_book = {
+                                "best_bid": round(gamma_p - 0.02, 4),
+                                "best_ask": round(gamma_p, 4),
+                                "spread": 0.02,
+                                "mid_price": round(gamma_p - 0.01, 4),
+                                "top_bid_size": 50.0,
+                                "top_ask_size": 50.0,
+                                "sum_bid_size": 50.0,
+                                "sum_ask_size": 50.0,
+                                "top_imbalance": 0.0,
+                                "depth_imbalance": 0.0,
+                                "microprice": round(gamma_p, 4),
+                                "bids_raw": [(round(gamma_p - 0.02, 2), 50.0)],
+                                "asks_raw": [(round(gamma_p, 2), 50.0)],
+                                "fallback_gamma": True
+                            }
+                            print(f"   -> [ℹ️ FALLBACK GAMMA API]: Book CLOB unilateral; utilizando cotacao oficial Gamma (${gamma_p:.3f}).")
+                        else:
+                            print(f"   -> [🛡️ FILTRO LIVRO]: Book CLOB indisponivel e Gamma (${gamma_p}) fora da faixa. Preservando capital.")
+
+                if candidate_side and target_book:
                     # Filtro JEV Trend Continuation
                     prior_candle = get_binance_sol_5m_prior_candle()
                     prior_dir = prior_candle["dir"] if prior_candle else candidate_side
@@ -620,18 +766,47 @@ class SolanaTrader5M:
                     if REQUIRE_PRIOR_CANDLE and prior_candle and prior_dir != candidate_side:
                         print(f"   -> [🛡️ VETO JEV]: Sinal {candidate_side} rejeitado por divergir da vela 5m anterior ({prior_dir} {prior_ret:.1f} bps).")
                     else:
-                        # Bússola Macro BTC (Jev Lead-Lag)
+                        # Bússola Macro BTC + Cross-Asset Beta Lag (CacheCarti Alpha)
                         btc_spot = get_binance_btc_spot()
                         btc_open = get_btc_candle_open(window_ts)
                         btc_veto = False
-                        if btc_spot and btc_open:
+                        if btc_spot and btc_open and strike and spot_now:
                             btc_delta = btc_spot - btc_open
-                            if candidate_side == "UP" and btc_delta < -10.0:
+                            btc_ret_pct = btc_delta / btc_open
+                            btc_drift_bps = btc_ret_pct * 10000.0
+                            sol_ret_pct = delta / strike
+
+                            beta_ok, beta_msg, beta_info = check_sol_cross_asset_beta_lag_gate(
+                                target_side=candidate_side,
+                                sol_delta_pct=sol_ret_pct,
+                                btc_delta_pct=btc_ret_pct
+                            )
+                            if not beta_ok:
                                 btc_veto = True
-                                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal UP rejeitado! BTC em queda (Delta: ${btc_delta:+.1f}).")
-                            elif candidate_side == "DOWN" and btc_delta > 10.0:
+                                print(f"   -> [🛡️ VETO CROSS-ASSET BETA (CacheCarti Alpha)]: {beta_msg}")
+                            elif beta_info.get("is_sol_lagging") and beta_info.get("is_btc_impulse"):
+                                print(f"   -> [🔥 BOOST CROSS-ASSET CATCH-UP]: {beta_msg}")
+                            elif candidate_side == "UP" and btc_drift_bps < -15.0:
                                 btc_veto = True
-                                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal DOWN rejeitado! BTC em alta (Delta: ${btc_delta:+.1f}).")
+                                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal UP rejeitado! BTC em queda pronunciada ({btc_drift_bps:+.1f} bps / Delta: ${btc_delta:+.1f}).")
+                            elif candidate_side == "DOWN" and btc_drift_bps > 15.0:
+                                btc_veto = True
+                                print(f"   -> [🛡️ VETO MACRO BTC]: Sinal DOWN rejeitado! BTC em alta pronunciada ({btc_drift_bps:+.1f} bps / Delta: ${btc_delta:+.1f}).")
+
+                        # REGRA DE PROTEÇÃO CONTRA CONTRATENDÊNCIA DOW REGIME (Charles Dow & Raghee Horner / JEV AI)
+                        if not btc_veto:
+                            dow_ok, dow_msg, dow_info = check_dow_counter_trend_veto(
+                                target_side=candidate_side,
+                                symbol="SOLUSDT",
+                                min_slope_bps=10.0,
+                                deadband_delta=delta,
+                                strong_reversal_threshold=2.0 * dynamic_deadband
+                            )
+                            if not dow_ok:
+                                btc_veto = True
+                                print(f"   -> [🛡️ VETO DOW REGIME SOL - JEV]: {dow_msg}")
+                            else:
+                                print(f"   -> [📈 DOW REGIME SHIELD SOL]: {dow_msg}")
 
                         if not btc_veto:
                             # Verificação de Microestrutura e Liquidez Real na CLOB
@@ -680,12 +855,13 @@ class SolanaTrader5M:
                                     collinearity_discount=0.75
                                 )
 
-                                # Dimensionamento por Kelly Fracionário (25% Kelly com Bounds Institucionais)
+                                # Dimensionamento Estrito Micro-Institucional JEV (Benchmark Desk 3B)
                                 real_bal = self.get_usdc_balance() if self.mode == "LIVE" else self.balance
                                 btc_reserve = 3.00 if self.mode == "LIVE" else 0.00
                                 cur_bankroll = max(10.0, real_bal - btc_reserve)
-                                min_stake_val = 1.00
-                                max_stake_val = min(2.50, max(1.00, round(cur_bankroll * 0.08, 2)))
+                                # Em LIVE, travar estritamente no FIXED_STAKE ($1.00) eliminando Kelly elástico agressivo
+                                min_stake_val = FIXED_STAKE
+                                max_stake_val = FIXED_STAKE if self.mode == "LIVE" else min(2.50, max(1.00, round(cur_bankroll * 0.08, 2)))
                                 target_stake, kelly_status = compute_dynamic_stake(
                                     bankroll=cur_bankroll,
                                     win_probability=model_fair_value,
@@ -695,6 +871,8 @@ class SolanaTrader5M:
                                     min_stake=min_stake_val,
                                     max_stake=max_stake_val
                                 )
+                                if self.mode == "LIVE" and target_stake > FIXED_STAKE:
+                                    target_stake = FIXED_STAKE
 
                                 if target_stake <= 0.0:
                                     print(f"   -> [🛡️ VETO KELLY FRACIONÁRIO]: {kelly_status}. Edge insuficiente.")
@@ -732,10 +910,69 @@ class SolanaTrader5M:
 
                                 exec_price = vwap_price
 
+                                # ── CÃO DE GUARDA JEV (Blindagem Anti-Exaustão e Anti-Repique SOL 5M) ──
+                                try:
+                                    from jev_microstructure_gate import jev_gate
+                                    delta_val = spot_now - strike
+                                    clob_sp = target_book.get("spread", 0.03)
+                                    obi_val = target_book.get("top_imbalance", 0.0)
+                                    jev_res = jev_gate.evaluate_entry(
+                                        desk_id="desk2",
+                                        delta_usd=delta_val,
+                                        binance_drift=round(delta_val * 0.25, 2),
+                                        clob_spread=clob_sp,
+                                        contract_price=exec_price,
+                                        oracle_discrepancy=0.10,
+                                        seconds_left=int(sec_left),
+                                        obi=obi_val,
+                                        cvd=0.0,
+                                        deadband_threshold=deadband_val if 'deadband_val' in locals() else 0.10,
+                                        side=candidate_side,
+                                        symbol="SOL"
+                                    )
+                                    if jev_res.get("verdict") == "VETO":
+                                        print(f"   [🛑 VETO CÃO DE GUARDA JEV SOL]: {jev_res.get('veto_reason')} | Regime: {jev_res.get('candle_regime')}. Veto preventivo contra repique!")
+                                        continue
+                                except Exception as e:
+                                    print(f"   [!] Aviso Jev Gate SOL: {e}")
+
                                 if self.mode == "LIVE":
                                     print(f"\n   🚀 [ENVIANDO ORDEM REAL POLYMARKET CLOB V2 ({candidate_side})]:")
                                     print(f"      Token: {target_token[:14]}... | Preço VWAP: ${exec_price:.4f} | Stake: ${target_stake:.2f} USDC")
-                                    order_res = self.place_live_order(target_token, "BUY", target_stake, price=exec_price)
+
+                                    maker_entry_attempted = False
+                                    order_res = {}
+
+                                    # Estratégia Maker Post-Only Inteligente (Touch Quoting JEV):
+                                    # Se spread >= $0.02 e best_bid + 0.01 <= PRIMARY_MAX_PRICE: cota 1 tick dentro do touch
+                                    if spread >= 0.02 and best_bid > 0 and (best_bid + 0.01) <= PRIMARY_MAX_PRICE:
+                                        touch_price = round(best_bid + 0.01, 2)
+                                        print(f"      [🎯 MAKER POST-ONLY JEV]: Cotando 1 tick dentro do spread a ${touch_price:.2f} (Best Bid: ${best_bid:.2f} | Best Ask: ${best_ask:.2f})...")
+                                        post_res = self.place_live_order(target_token, "BUY", target_stake, price=touch_price, post_only=True)
+                                        if post_res.get("status") == "SUCCESS":
+                                            maker_order_id = post_res.get("response", {}).get("orderID", "")
+                                            print(f"      -> Ordem Post-Only enviada com sucesso (ID: {maker_order_id})! Aguardando fill passivo...")
+                                            maker_entry_attempted = True
+                                            for _mk_chk in range(5):  # Monitora por até 10 segundos
+                                                time.sleep(2.0)
+                                                mk_bal = self.get_token_balance(target_token)
+                                                if mk_bal and mk_bal >= 0.5:
+                                                    order_res = post_res
+                                                    exec_price = touch_price
+                                                    print(f"      🎉 [MAKER FILL CONCLUÍDO]: Ordem preenchida passivamente a ${touch_price:.2f}! Spread capturado.")
+                                                    break
+                                            if not (order_res.get("status") == "SUCCESS"):
+                                                print(f"      [⏳ MAKER TIMEOUT]: Ordem Post-Only não preenchida em 10s. Cancelando ordem resting...")
+                                                try:
+                                                    if maker_order_id:
+                                                        self.client.cancel_order(maker_order_id)
+                                                except Exception:
+                                                    pass
+                                                maker_entry_attempted = False
+
+                                    if not maker_entry_attempted:
+                                        order_res = self.place_live_order(target_token, "BUY", target_stake, price=exec_price, post_only=False)
+
                                     if order_res.get("status") == "SUCCESS":
                                         resp_data = order_res.get("response", {})
                                         order_id = resp_data.get("orderID") or "N/A"
@@ -1051,7 +1288,7 @@ class SolanaTrader5M:
             pos = self.current_open_position
             # Aguarda 4s pós-fechamento para estabilização
             time.sleep(4)
-            final_spot = get_binance_sol_spot() or spot_now
+            final_spot = get_chainlink_sol_price() or get_binance_sol_spot() or spot_now
             is_win = (final_spot >= pos["strike"]) if pos["direction"] == "UP" else (final_spot < pos["strike"])
             winner = "UP" if final_spot >= pos["strike"] else "DOWN"
 

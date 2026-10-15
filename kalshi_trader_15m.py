@@ -26,7 +26,15 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any, List
 
-from execution_math import compute_kalshi_dynamic_contracts
+from execution_math import (
+    compute_kalshi_dynamic_contracts,
+    check_round_number_barrier,
+    detect_dow_regime_15m,
+    calculate_black_scholes_digital_fv,
+    safe_eval_gate
+)
+from variable_bench import bench
+from risk_gate import atomic_write_json, record_desk_trade_result
 
 # Garante UTF-8 no Windows
 if sys.platform == "win32":
@@ -44,16 +52,16 @@ ENV_PATH = os.path.join(BASE_DIR, ".env")
 KALSHI_API_PROD = "https://external-api.kalshi.com/trade-api/v2"
 KALSHI_API_DEMO = "https://external-api.demo.kalshi.co/trade-api/v2"
 
-# Parâmetros de Risco e Estratégia (Otimizados com Jev AI - 9 Anos de Dados)
+# Parâmetros de Risco e Estratégia (Calibração Equilibrada JEV AI — Sweet-Spot Kalshi/Desk 3B)
 FIXED_STAKE = 1.00                # $1.00 por contrato base
-DEADBAND_BPS = 0.00050            # 5.0 bps (0.050%) do preço do BTC (Jev Sweet-Spot 9 Anos)
-DEADBAND_MIN_FLOOR = 40.0         # Piso mínimo de $40.00 contra ruído em 15m
-PRIMARY_MAX_PRICE = 60            # Preço máximo em centavos (60¢ = 0.60 USD, breakeven <= 60%)
-PRIMARY_MIN_PRICE = 35            # Preço mínimo em centavos (35¢ = 0.35 USD)
+DEADBAND_BPS = 0.00038            # 3.8 bps (0.038%) do preço do BTC (Jev Balanceado)
+DEADBAND_MIN_FLOOR = 40.0         # Piso mínimo de $40.00 contra ruído em 15m (Consenso JEV anti-chop)
+PRIMARY_MAX_PRICE = 66            # Preço máximo em centavos (66¢ = 0.66 USD, EV positivo na Kalshi)
+PRIMARY_MIN_PRICE = 40            # Preço mínimo em centavos (40¢ = 0.40 USD - elimina compras tóxicas sub-40¢)
 TAKE_PROFIT_CENTS = 86            # Venda antecipada se cota bater 86¢ (lucro travado)
 STOP_LOSS_MIN_BID = 15            # Bid mínimo aceito para Stop Loss na CLOB
 EVAL_POINT_SEC = 450              # Ponto de decisão aos 450s (exata metade dos 900s da vela)
-REQUIRE_PRIOR_CANDLE_TREND = True # Filtro Jev Trend Continuation (75% preferência)
+REQUIRE_PRIOR_CANDLE_TREND = True # Filtro Jev Trend Continuation com Override de Delta Forte (>= 1.5x)
 PRIOR_CANDLE_MIN_BPS = 3.0        # Piso de ruído neutro (Consenso JEV 100%): |ret_bps| < 3.0 não veta drift forte
 
 def load_env_config() -> Dict[str, str]:
@@ -277,11 +285,11 @@ class KalshiClient:
 
     def cancel_order(self, order_id: str, exchange_index: int = 2) -> Optional[dict]:
         """Cancela ordem oficial V2 na Kalshi"""
-        return self.request("DELETE", f"/portfolio/events/orders/{order_id}?exchange_index={exchange_index}", auth_required=True)
+        return self.request("DELETE", f"/portfolio/orders/{order_id}?exchange_index={exchange_index}", auth_required=True)
 
     def get_order_status(self, order_id: str) -> Optional[dict]:
         """Consulta o status de uma ordem oficial na Kalshi"""
-        return self.request("GET", f"/portfolio/events/orders/{order_id}", auth_required=True)
+        return self.request("GET", f"/portfolio/orders/{order_id}", auth_required=True)
 
     def get_market_settlement(self, ticker: str, max_retries: int = 5) -> Optional[dict]:
         """Consulta o resultado oficial de liquidação na Kalshi API (status, result)"""
@@ -300,10 +308,55 @@ class KalshiClient:
             time.sleep(3)
         return None
 
+    def get_portfolio_settlement(self, ticker: str, max_retries: int = 6, delay: int = 3) -> Optional[dict]:
+        """
+        Consulta o resultado oficial e indiscutível de liquidação no portfólio Kalshi (/portfolio/settlements).
+        Retorna o registro oficial contendo 'market_result' ('yes'/'no'), 'revenue' (centavos) e 'fee_cost'.
+        """
+        for _ in range(max_retries):
+            res = self.request("GET", "/portfolio/settlements", auth_required=True)
+            if res and "settlements" in res:
+                for s in res["settlements"]:
+                    if s.get("ticker") == ticker:
+                        return s
+            time.sleep(delay)
+        return None
 
 
-# ===================== ENGINE DE PREÇO SPOT (Binance Ref) =====================
-def get_binance_btc_spot() -> Optional[float]:
+
+# ===================== ENGINE DE PREÇO SPOT (CF Benchmarks CME BRTI / Coinbase & Kraken Ref) =====================
+def get_kalshi_benchmark_spot() -> Optional[float]:
+    """
+    Consulta o índice spot oficial de referência da Kalshi (CF Benchmarks CME BRTI).
+    Fontes constitutivas prioritárias: Coinbase BTC-USD e Kraken XBTUSD.
+    Elimina o basis USDT da Binance que causava falsos positivos na direção do contrato.
+    """
+    prices = []
+    # 1. Coinbase BTC-USD (Maior peso no índice CF Benchmarks)
+    try:
+        req_cb = urllib.request.Request("https://api.exchange.coinbase.com/products/BTC-USD/ticker", headers={"User-Agent": "KalshiTrader/2.0"})
+        with urllib.request.urlopen(req_cb, timeout=2.5) as r:
+            p_cb = float(json.loads(r.read().decode())["price"])
+            if p_cb > 1000:
+                prices.append(p_cb)
+    except Exception:
+        pass
+
+    # 2. Kraken BTC-USD (Constituinte oficial CME/CF Benchmarks)
+    try:
+        req_kr = urllib.request.Request("https://api.kraken.com/0/public/Ticker?pair=XBTUSD", headers={"User-Agent": "KalshiTrader/2.0"})
+        with urllib.request.urlopen(req_kr, timeout=2.5) as r:
+            data_kr = json.loads(r.read().decode())
+            p_kr = float(data_kr["result"]["XXBTZUSD"]["c"][0])
+            if p_kr > 1000:
+                prices.append(p_kr)
+    except Exception:
+        pass
+
+    if prices:
+        return round(sum(prices) / len(prices), 2)
+
+    # Fallback apenas se Coinbase e Kraken falharem simultaneamente:
     urls = [
         "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
         "https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT"
@@ -317,13 +370,30 @@ def get_binance_btc_spot() -> Optional[float]:
             pass
     return None
 
+def get_binance_btc_spot() -> Optional[float]:
+    """Alias para compatibilidade retroativa"""
+    return get_kalshi_benchmark_spot()
 
-def get_binance_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
+def get_kalshi_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
     """
-    Consulta a última vela de 15m FECHADA na Binance para validação de tendência macro.
-    Filtro Jev (SystemOne 9 Anos): 75% de probabilidade de acerto superior em trend continuation.
-    Retorna {'dir': 'UP'|'DOWN', 'open': float, 'close': float, 'ret_bps': float}
+    Consulta a última vela de 15m FECHADA no Coinbase BTC-USD (ou Binance em fallback)
+    para validação de tendência macro no mesmo índice de liquidação da Kalshi.
     """
+    try:
+        req_cb = urllib.request.Request("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req_cb, timeout=3) as r:
+            cb_data = json.loads(r.read().decode())
+            if len(cb_data) >= 2:
+                prior = cb_data[1]  # [time, low, high, open, close, volume]
+                p_open = float(prior[3])
+                p_close = float(prior[4])
+                p_dir = "UP" if p_close >= p_open else "DOWN"
+                ret_bps = (abs(p_close - p_open) / p_open) * 10000
+                return {"dir": p_dir, "open": p_open, "close": p_close, "ret_bps": ret_bps}
+    except Exception:
+        pass
+
+    # Fallback Binance
     urls = [
         "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=2",
         "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=2"
@@ -334,7 +404,7 @@ def get_binance_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
             with urllib.request.urlopen(req, timeout=3) as r:
                 data = json.loads(r.read().decode())
                 if len(data) >= 2:
-                    prior = data[0] # Última vela de 15m 100% completada
+                    prior = data[0]
                     p_open = float(prior[1])
                     p_close = float(prior[4])
                     p_dir = "UP" if p_close >= p_open else "DOWN"
@@ -343,6 +413,10 @@ def get_binance_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
         except Exception:
             pass
     return None
+
+def get_binance_btc_15m_prior_candle() -> Optional[Dict[str, Any]]:
+    """Alias para compatibilidade retroativa"""
+    return get_kalshi_btc_15m_prior_candle()
 
 
 # ===================== LOOP PRINCIPAL DO KALSHI TRADER =====================
@@ -382,8 +456,7 @@ class KalshiTrader15M:
                 with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 data["open_position"] = pos_data
-                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
+                atomic_write_json(JOURNAL_JSON, data)
             except Exception:
                 pass
 
@@ -394,8 +467,7 @@ class KalshiTrader15M:
                 with open(JOURNAL_JSON, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 data["open_position"] = None
-                with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
+                atomic_write_json(JOURNAL_JSON, data)
             except Exception:
                 pass
 
@@ -422,6 +494,17 @@ class KalshiTrader15M:
         print(f" Tempo Decorrido: {elapsed_sec}s / 900s | Restam: {remaining_sec}s | Modo: {self.mode}")
         print(f" Saldo Real Shard 2: ${self.balance:,.2f} USD")
         print("=" * 80)
+
+        # Checagem do Variable Bench e Disjuntores (Universal 2-Loss + Coin-Flip - JEV AI)
+        is_benched, bench_reason, bench_rem = bench.check_consecutive_losses_breaker("desk3", JOURNAL_JSON, max_consecutive_losses=2, cooldown_seconds=1800)
+        if not is_benched:
+            is_benched, bench_reason, bench_rem = bench.check_coin_flip_breaker("desk3", JOURNAL_JSON)
+        if not is_benched:
+            is_benched, bench_reason, bench_rem = bench.is_benched("desk3")
+        if is_benched:
+            print(f"\n   [🛑 VARIABLE BENCH]: Desk 3 em cooldown ({bench_reason}) — restam {bench_rem:.1f}s. Pausado...")
+            time.sleep(min(30, max(5, int(bench_rem))))
+            return
 
         has_resumed = False
         contract_count = 1
@@ -476,13 +559,19 @@ class KalshiTrader15M:
                         pass
             strike_price = float(raw_strike or spot_now)
 
+            # 2.1 Detecção do Regime de Charles Dow (Raghee Horner / JEV AI)
+            dow_info = detect_dow_regime_15m(symbol="BTCUSDT")
+            dow_mult = dow_info.get("deadband_multiplier", 1.0)
+            dow_rec_contracts = dow_info.get("recommended_contracts", 2)
+            print(f"   [🏛️ DOW REGIME DETECTOR]: {dow_info.get('description')}")
+
             delta = spot_now - strike_price
-            dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS, 2))
+            dynamic_deadband = max(DEADBAND_MIN_FLOOR, round(strike_price * DEADBAND_BPS * dow_mult, 2))
 
             print(f"\n[📊 ANÁLISE DE MERCADO KALSHI]:")
             print(f"   Ticker: {ticker}")
             print(f"   Strike (K): ${strike_price:,.2f} | Spot Atual: ${spot_now:,.2f}")
-            print(f"   Drift Real (Delta): ${delta:+.2f} | Deadband Dinâmico: ${dynamic_deadband:.2f} ({DEADBAND_BPS*10000:.1f} bps)")
+            print(f"   Drift Real (Delta): ${delta:+.2f} | Deadband Dinâmico: ${dynamic_deadband:.2f} ({DEADBAND_BPS*10000*dow_mult:.1f} bps)")
 
             # 3. Decisão de Entrada
             candidate_side = None
@@ -497,11 +586,42 @@ class KalshiTrader15M:
                 target_dir = "DOWN"
                 print(f"   -> [SINAL INTRA-VELA]: DOWN / NO (Drift de -${abs(delta):.2f} superou deadband de ${dynamic_deadband:.2f})")
             else:
-                print(f"   -> [FILTRO DEADBAND]: Delta de ${delta:+.2f} está na zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000:.1f} bps). Preservando capital.")
+                print(f"   -> [FILTRO DEADBAND]: Delta de ${delta:+.2f} está na zona morta (< ${dynamic_deadband:.2f} | {DEADBAND_BPS*10000*dow_mult:.1f} bps). Preservando capital.")
                 time.sleep(max(1, remaining_sec))
                 return
 
-            # 3.1 Filtro de Vela Anterior (Recomendação #1 do Jev — 75% Trend Continuation com Piso de Ruído)
+            # 3.0 Veto de Contratendência no Dow Regime (Consenso JEV / Raghee Horner)
+            dow_regime = dow_info.get("regime", "")
+            dow_slope = dow_info.get("slope_bps", 0.0)
+            reversal_mult = 2.5
+            strong_reversal_threshold = round(dynamic_deadband * reversal_mult, 2)
+
+            if dow_regime == "DOWNTREND" and candidate_side == "yes":
+                if delta < strong_reversal_threshold:
+                    print(f"   [🛡️ VETO DOW REGIME - JEV]: Tentativa de comprar YES (UP) contra Tendência de Baixa ativa (Slope: {dow_slope:+.1f} bps).")
+                    print(f"      Delta de +${delta:.2f} é repique fraco (< ${strong_reversal_threshold:.2f} exigidos para contratendência). Abortando para preservar capital.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+                else:
+                    print(f"   [🔥 OVERRIDE DOW REVERSAL]: Delta massivo de +${delta:.2f} superou {reversal_mult}x deadband (${strong_reversal_threshold:.2f}). Reversão validada.")
+
+            elif dow_regime == "UPTREND" and candidate_side == "no":
+                if abs(delta) < strong_reversal_threshold:
+                    print(f"   [🛡️ VETO DOW REGIME - JEV]: Tentativa de comprar NO (DOWN) contra Tendência de Alta ativa (Slope: {dow_slope:+.1f} bps).")
+                    print(f"      Delta de -${abs(delta):.2f} é correção fraca (< ${strong_reversal_threshold:.2f} exigidos para contratendência). Abortando para preservar capital.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+                else:
+                    print(f"   [🔥 OVERRIDE DOW REVERSAL]: Delta massivo de -${abs(delta):.2f} superou {reversal_mult}x deadband (${strong_reversal_threshold:.2f}). Reversão validada.")
+
+            # 3.1 Filtro Round Number Barrier Shield (.00 Double Zero - Raghee Horner / JEV)
+            is_barrier, barrier_reason = check_round_number_barrier(spot=spot_now, target_side=target_dir, interval=500.0, buffer_usd=20.0)
+            if is_barrier:
+                print(f"   -> [🛡️ ROUND NUMBER SHIELD]: {barrier_reason}. Abortando entrada para evitar ricochete.")
+                time.sleep(max(1, remaining_sec))
+                return
+
+            # 3.1 Filtro de Vela Anterior (Recomendação JEV — Trend Continuation com Override de Delta Forte)
             if REQUIRE_PRIOR_CANDLE_TREND:
                 prior_candle = get_binance_btc_15m_prior_candle()
                 if prior_candle:
@@ -512,10 +632,16 @@ class KalshiTrader15M:
                         print(f"   -> [🕯️ VELA ANTERIOR NEUTRA - JEV]: Variação de {ret_bps:.1f} bps < {PRIOR_CANDLE_MIN_BPS:.1f} bps (ruído microestrutural plano).")
                         print(f"      Drift intra-vela ({target_dir} | Delta ${delta:+.2f}) prevalece sem veto de contratendência.")
                     elif target_dir != prior_dir:
-                        print(f"   -> [🛡️ VETO JEV]: Sinal {target_dir} ({candidate_side.upper()}) rejeitado por divergir de tendência real anterior ({prior_dir} com {ret_bps:.1f} bps).")
-                        print("      Preservando capital contra exaustões e falsos rompimentos de contratendência.")
-                        time.sleep(max(1, remaining_sec))
-                        return
+                        # Consenso JEV: Se o drift intra-vela for muito expressivo (|Delta| >= 1.5 * dynamic_deadband), concede override
+                        strong_override_threshold = round(dynamic_deadband * 1.5, 2)
+                        if abs(delta) >= strong_override_threshold:
+                            print(f"   -> [🔥 OVERRIDE JEV DRIFT FORTE]: Sinal {target_dir} diverge da vela anterior ({prior_dir}), mas |Delta| de ${abs(delta):.2f} superou 1.5x deadband (${strong_override_threshold:.2f}).")
+                            print("      Drift de alta convicção validado — prosseguindo com entrada!")
+                        else:
+                            print(f"   -> [🛡️ VETO JEV]: Sinal {target_dir} ({candidate_side.upper()}) rejeitado por divergir de tendência real anterior ({prior_dir} com {ret_bps:.1f} bps).")
+                            print(f"      Delta ${abs(delta):.2f} insuficiente para override (< ${strong_override_threshold:.2f}). Preservando capital.")
+                            time.sleep(max(1, remaining_sec))
+                            return
                     else:
                         print(f"   -> [🔥 CONFIRMAÇÃO JEV]: Tendência da vela anterior ({prior_dir} com {ret_bps:.1f} bps) alinhada com drift intra-vela ({target_dir})! Convicção alta.")
                 else:
@@ -563,8 +689,35 @@ class KalshiTrader15M:
                 if entry_price is None:
                     entry_price = 55 # Fallback prudente se livro estiver completamente vazio
 
-                if entry_price > PRIMARY_MAX_PRICE:
-                    print(f"   [🛡️ FILTRO TETO DE PREÇO]: Cota a {entry_price}¢ > {PRIMARY_MAX_PRICE}¢ (Breakeven desfavorável). Pulando entrada.")
+                # 4.1 Gate Híbrido Black-Scholes Fair Value (Validado 100% pelo JEV AI — Backtest 9 Anos)
+                # Calcula a probabilidade neutra ao risco N(d2) da opção digital aos 450s
+                bs_prob_up = calculate_black_scholes_digital_fv(
+                    spot=spot_now,
+                    strike=strike_price,
+                    elapsed_sec=int(elapsed_sec),
+                    total_sec=900,
+                    sigma=0.0030
+                )
+                target_fv_cents = round((bs_prob_up if target_side == "yes" else (1.0 - bs_prob_up)) * 100.0, 1)
+                
+                # Teto Híbrido: min(PRIMARY_MAX_PRICE, max(PRIMARY_MIN_PRICE, int(target_fv_cents + 2.0)))
+                # Protege contra compras muito acima do FV quando o drift for fraco, tolerando o spread natural de 1-2¢ do formador de mercado.
+                hybrid_max_price = min(PRIMARY_MAX_PRICE, max(PRIMARY_MIN_PRICE, int(target_fv_cents + 2.0)))
+
+                if entry_price > hybrid_max_price:
+                    print(f"   [🛡️ GATE HÍBRIDO BLACK-SCHOLES]: Cota a {entry_price}¢ excede o Teto Híbrido de {hybrid_max_price}¢ (Valor Justo BS: {target_fv_cents:.1f}¢ + 2¢ spread | Cap Estático: {PRIMARY_MAX_PRICE}¢). Pulando entrada com Negative EV.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+
+                if entry_price < PRIMARY_MIN_PRICE:
+                    print(f"   [🛡️ FILTRO PISO DE PREÇO JEV]: Cota a {entry_price}¢ < {PRIMARY_MIN_PRICE}¢ (Armadilha de reversão / Seleção adversa sub-40¢). Pulando entrada.")
+                    time.sleep(max(1, remaining_sec))
+                    return
+
+                # 4.1.1 Consenso Rivo 6,532 Mercados / JEV: Banimento do Líder Fraco (60¢-70¢)
+                # Calibrado via backtest de 9 anos (Piso $40.00): maximiza WR (77.0%), PF (2.05) e evita trade starvation.
+                if 60 <= entry_price <= 70 and abs(delta) < dynamic_deadband:
+                    print(f"   [🛡️ FILTRO CONSENSO RIVO/JEV]: Cota a {entry_price}¢ na Zona de Líder Fraco (60¢-70¢) com Delta ${abs(delta):.2f} < ${dynamic_deadband:.2f}. EV negativo. Pulando entrada para preservar capital.")
                     time.sleep(max(1, remaining_sec))
                     return
 
@@ -577,19 +730,44 @@ class KalshiTrader15M:
                     win_prob += 0.05
 
                 # 4.3 Dimensionamento por Kelly Fracionário (25%) com Guardrails Kalshi
-                # Trava de 1 contrato estrito recomendada com 98% pelo JEV para banca < $20
-                safe_cap = 1 if self.balance < 20.0 else 2
+                # Calibração Dinâmica JEV: 2 contratos permitidos apenas em tendência clara (Dow Regime). Em distribuição/choppy, trava em 1 contrato.
+                allow_2_contracts = ((self.mode == "PAPER") or (self.balance >= 20.0) or (abs(delta) >= 50.0 and self.balance >= 12.0)) and (dow_rec_contracts >= 2)
+                safe_min = 2 if allow_2_contracts else 1
+                safe_cap = 2 if allow_2_contracts else 1
                 count, kelly_status = compute_kalshi_dynamic_contracts(
                     bankroll=self.balance,
                     win_probability=win_prob,
                     entry_price_cents=entry_price,
                     available_qty=avail_qty,
                     delta_ratio=delta_ratio,
-                    min_contracts=1,
+                    min_contracts=safe_min,
                     max_contracts_cap=safe_cap
                 )
-                contract_count = count
-                stake = round((entry_price / 100.0) * contract_count, 4)
+                # 4.4 CÃO DE GUARDA JEV (Blindagem Anti-Exaustão e Anti-Repique na Kalshi BTC)
+                try:
+                    from jev_microstructure_gate import jev_gate
+                    sp_usd = round(float(best_ask - best_bid) / 100.0, 4) if (best_ask and best_bid) else 0.03
+                    jev_res = jev_gate.evaluate_entry(
+                        desk_id="desk3",
+                        delta_usd=delta,
+                        binance_drift=round(delta * 0.25, 2),
+                        clob_spread=sp_usd,
+                        contract_price=round(entry_price / 100.0, 3),
+                        oracle_discrepancy=0.50,
+                        seconds_left=int(remaining_sec),
+                        obi=0.0,
+                        cvd=0.0,
+                        deadband_threshold=dynamic_deadband,
+                        side=target_side.upper(),
+                        symbol="BTC"
+                    )
+                    if jev_res.get("verdict") == "VETO":
+                        print(f"   [🛑 VETO CÃO DE GUARDA JEV KALSHI BTC]: {jev_res.get('veto_reason')} | Regime: {jev_res.get('candle_regime')}. Abortando entrada para evitar repique!")
+                        time.sleep(max(1, remaining_sec))
+                        return
+                except Exception as e:
+                    print(f"   [!] Aviso JEV Gate Kalshi BTC: {e}")
+
                 print(f"\n[🚀 ORDEM KALSHI]: Comprando {contract_count}x {target_side.upper()} @ {entry_price}¢ (Modo: {self.mode}) | Stake: ${stake:.2f} ({kelly_status})")
                 real_order_id = ""
                 if self.mode == "LIVE":
@@ -611,8 +789,16 @@ class KalshiTrader15M:
                         return
                     order_info = res.get("order", {}) if isinstance(res.get("order"), dict) else res
                     real_order_id = order_info.get("order_id") or res.get("order_id", "")
-                    status = str(order_info.get("status", "resting")).lower()
-                    print(f"   [⚡ STATUS INICIAL DA COMPRA]: ID: {real_order_id} | Status: {status}")
+                    
+                    # Detecção de execução imediata (taker fill instantâneo na Kalshi)
+                    fill_cnt = float(res.get("fill_count") or order_info.get("fill_count") or 0.0)
+                    rem_cnt = float(res.get("remaining_count") or order_info.get("remaining_count") or 1.0)
+                    if rem_cnt == 0.0 and fill_cnt >= contract_count:
+                        status = "executed"
+                    else:
+                        status = str(order_info.get("status", "resting")).lower()
+
+                    print(f"   [⚡ STATUS INICIAL DA COMPRA]: ID: {real_order_id} | Status: {status} (Filled: {fill_cnt}/{contract_count})")
 
                     # Verificação rigorosa de execução (Fill-or-Cancel) no BUY
                     if status in ("open", "resting", "pending"):
@@ -664,10 +850,13 @@ class KalshiTrader15M:
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     })
 
-            # 5. Monitoramento de Take-Profit até o fim dos 900s
+            # 5. Monitoramento de Take-Profit com Saída em Escala (Raghee Horner / JEV)
             print(f"[🎯 MONITORAMENTO KALSHI]: Acompanhando Take-Profit (>= {TAKE_PROFIT_CENTS}¢) até os 900s...")
             sold_early = False
             early_sell_price = 0
+            tp1_executed = False
+            tp1_pnl = 0.0
+            total_pnl = 0.0
 
             while True:
                 now_sec = (datetime.now(timezone.utc).minute % 15) * 60 + datetime.now(timezone.utc).second
@@ -680,53 +869,147 @@ class KalshiTrader15M:
                     cur_delta = spot_cur - strike_price
                     # Se o delta expandiu significativamente a favor (> 15 bps), take profit
                     cur_bps = (abs(cur_delta) / strike_price) * 10000
-                    if (target_side == "yes" and cur_delta > 0 and cur_bps >= 15.0) or (target_side == "no" and cur_delta < 0 and cur_bps >= 15.0):
+                    if not tp1_executed and ((target_side == "yes" and cur_delta > 0 and cur_bps >= 15.0) or (target_side == "no" and cur_delta < 0 and cur_bps >= 15.0)):
                         early_sell_price = TAKE_PROFIT_CENTS
                         sell_ok = True
                         sell_order_id = "paper-tp"
 
-                        if self.mode == "LIVE":
-                            print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA (TAKE-PROFIT) NA KALSHI]:")
-                            print(f"   Ticker: {ticker} | Lado: {target_side.upper()} ({contract_count}x) | Preço Alvo: {early_sell_price}¢")
-                            sell_res = self.client.place_order(ticker, target_side, count=contract_count, price_cents=early_sell_price, action="sell")
-                            if isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res):
-                                order_data = sell_res.get("order", {}) if isinstance(sell_res.get("order"), dict) else sell_res
-                                sell_order_id = order_data.get("order_id", "SUBMITTED")
-                                status = str(order_data.get("status", "resting")).lower()
-                                print(f"   -> Ordem de Venda Enviada! Order ID: {sell_order_id} | Status: {status}")
-
-                                # Se a ordem ainda estiver descansando (resting), aguarda preenchimento no livro
-                                if status in ("open", "resting", "pending"):
-                                    print("   -> Aguardando execução (fill) da ordem no livro Kalshi...")
-                                    for _ in range(4):
-                                        time.sleep(5)
-                                        chk = self.client.get_order_status(sell_order_id)
-                                        if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
-                                             cur_st = str(chk["order"].get("status", "")).lower()
-                                             if cur_st in ("executed", "filled"):
-                                                 status = "filled"
-                                                 print("   -> Ordem Kalshi PREENCHIDA (Filled) com sucesso!")
-                                                 break
-                                             elif cur_st:
-                                                 status = cur_st
-
-                                if status in ("executed", "filled"):
-                                    sell_ok = True
+                        if contract_count >= 2:
+                            # Saída em Escala: Liquida 50% no TP1
+                            half_contracts = contract_count // 2
+                            if self.mode == "LIVE":
+                                print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA PARCIAL (TP1 SCALE) NA KALSHI]:")
+                                print(f"   Ticker: {ticker} | Lado: {target_side.upper()} ({half_contracts}x de {contract_count}x) | Preço Alvo: {early_sell_price}¢")
+                                sell_res = self.client.place_order(ticker, target_side, count=half_contracts, price_cents=early_sell_price, action="sell")
+                                if isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res):
+                                    order_data = sell_res.get("order", {}) if isinstance(sell_res.get("order"), dict) else sell_res
+                                    sell_order_id = order_data.get("order_id", "SUBMITTED")
+                                    status = str(order_data.get("status", "resting")).lower()
+                                    if status in ("open", "resting", "pending"):
+                                        for _ in range(4):
+                                            time.sleep(5)
+                                            chk = self.client.get_order_status(sell_order_id)
+                                            if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
+                                                cur_st = str(chk["order"].get("status", "")).lower()
+                                                if cur_st in ("executed", "filled"):
+                                                    status = "filled"
+                                                    break
+                                    sell_ok = (status in ("executed", "filled"))
+                                    if not sell_ok:
+                                        try:
+                                            self.client.cancel_order(sell_order_id)
+                                        except Exception:
+                                            pass
                                 else:
-                                    print(f"   [⚠️ VENDA NÃO PREENCHIDA]: Status permanece '{status}'. Cancelando ordem resting para não deixar risco aberto.")
-                                    try:
-                                        self.client.cancel_order(sell_order_id)
-                                    except Exception:
-                                        pass
                                     sell_ok = False
-                            else:
-                                print(f"   [❌ FALHA NA VENDA KALSHI]: {sell_res}. Mantendo posição até vencimento final.")
-                                sell_ok = False
 
-                        if sell_ok:
+                            if sell_ok:
+                                tp1_executed = True
+                                payout_tp1 = round((early_sell_price / 100.0) * half_contracts, 4)
+                                tp1_pnl = round(payout_tp1 - ((entry_price / 100.0) * half_contracts), 4)
+                                contract_count -= half_contracts
+                                stake = round((entry_price / 100.0) * contract_count, 4)
+                                if self.mode == "LIVE":
+                                    time.sleep(3)
+                                    b_info = self.client.get_real_balance()
+                                    real_s2 = b_info.get("shard2_balance")
+                                    if real_s2 and real_s2 > 0:
+                                        self.balance = real_s2
+                                else:
+                                    self.balance += tp1_pnl
+                                self.save_open_position({
+                                    "ticker": ticker,
+                                    "target_side": target_side,
+                                    "count": contract_count,
+                                    "entry_price": entry_price,
+                                    "stake": stake,
+                                    "order_id": real_order_id,
+                                    "strike_price": strike_price,
+                                    "tp1_executed": True,
+                                    "tp1_pnl": tp1_pnl,
+                                    "breakeven_price": entry_price,
+                                    "timestamp": datetime.now(timezone.utc).isoformat()
+                                })
+                                print(f"\n[💰 RAGHEE SCALE - TP1 CONFIRMADO]: {half_contracts}x vendido a {early_sell_price}¢ (+${tp1_pnl:+.2f} USD)!")
+                                print(f"   Runner ({contract_count}x) mantido com Stop Breakeven ({entry_price}¢)! Saldo: ${self.balance:,.2f}")
+                        else:
+                            # Saída Integral (apenas 1 contrato)
+                            if self.mode == "LIVE":
+                                print(f"\n[💰 ENVIANDO ORDEM REAL DE VENDA (TAKE-PROFIT) NA KALSHI]:")
+                                print(f"   Ticker: {ticker} | Lado: {target_side.upper()} ({contract_count}x) | Preço Alvo: {early_sell_price}¢")
+                                sell_res = self.client.place_order(ticker, target_side, count=contract_count, price_cents=early_sell_price, action="sell")
+                                if isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res):
+                                    order_data = sell_res.get("order", {}) if isinstance(sell_res.get("order"), dict) else sell_res
+                                    sell_order_id = order_data.get("order_id", "SUBMITTED")
+                                    status = str(order_data.get("status", "resting")).lower()
+                                    if status in ("open", "resting", "pending"):
+                                        for _ in range(4):
+                                            time.sleep(5)
+                                            chk = self.client.get_order_status(sell_order_id)
+                                            if isinstance(chk, dict) and "order" in chk and isinstance(chk["order"], dict):
+                                                cur_st = str(chk["order"].get("status", "")).lower()
+                                                if cur_st in ("executed", "filled"):
+                                                    status = "filled"
+                                                    break
+                                    sell_ok = (status in ("executed", "filled"))
+                                    if not sell_ok:
+                                        try:
+                                            self.client.cancel_order(sell_order_id)
+                                        except Exception:
+                                            pass
+                                else:
+                                    sell_ok = False
+
+                            if sell_ok:
+                                sold_early = True
+                                payout = round((early_sell_price / 100.0) * contract_count, 4)
+                                cycle_pnl = round(payout - stake, 4)
+                                if self.mode == "LIVE":
+                                    time.sleep(3)
+                                    b_info = self.client.get_real_balance()
+                                    real_s2 = b_info.get("shard2_balance")
+                                    if real_s2 and real_s2 > 0:
+                                        self.balance = real_s2
+                                else:
+                                    self.balance += cycle_pnl
+                                print(f"\n[💰 TAKE-PROFIT KALSHI CONFIRMADO]: Posição vendida a {early_sell_price}¢ ({contract_count}x | Drift: {cur_bps:.1f} bps)!")
+                                print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
+                                self.save_trade({
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "execution_mode": self.mode,
+                                    "order_id": real_order_id,
+                                    "sell_order_id": sell_order_id,
+                                    "ticker": ticker,
+                                    "count": contract_count,
+                                    "strike": strike_price,
+                                    "entry_price": entry_price,
+                                    "target_side": target_side.upper(),
+                                    "result": "VITÓRIA (TAKE-PROFIT)",
+                                    "sold_early": True,
+                                    "sell_price": early_sell_price,
+                                    "payout": payout,
+                                    "cycle_pnl": round(cycle_pnl, 4),
+                                    "balance": round(self.balance, 4)
+                                })
+                                self.clear_open_position()
+                                time.sleep(max(1, 900 - now_sec))
+                                return
+
+                    # Monitoramento de Breakeven Stop no Runner (após TP1 executado)
+                    elif tp1_executed:
+                        # Se o delta reverter para neutro ou contra (<= 0 para YES, >= 0 para NO)
+                        runner_be_triggered = (target_side == "yes" and cur_delta <= 0) or (target_side == "no" and cur_delta >= 0)
+                        if runner_be_triggered:
+                            print(f"\n[🛡️ RAGHEE SCALE - BREAKEVEN STOP DISPARADO]: Delta recuou para zero ({cur_delta:+.2f}). Fechando runner ({contract_count}x)...")
+                            be_sold_ok = True
+                            if self.mode == "LIVE":
+                                sell_res = self.client.place_order(ticker, target_side, count=contract_count, price_cents=entry_price, action="sell")
+                                be_sold_ok = isinstance(sell_res, dict) and ("order" in sell_res or "order_id" in sell_res)
+                            
+                            payout_be = round((entry_price / 100.0) * contract_count, 4)
+                            pnl_be = round(payout_be - stake, 4) # 0.00
+                            total_pnl = round(tp1_pnl + pnl_be, 4)
                             sold_early = True
-                            payout = round((early_sell_price / 100.0) * contract_count, 4)
-                            cycle_pnl = round(payout - stake, 4)
                             if self.mode == "LIVE":
                                 time.sleep(3)
                                 b_info = self.client.get_real_balance()
@@ -734,24 +1017,22 @@ class KalshiTrader15M:
                                 if real_s2 and real_s2 > 0:
                                     self.balance = real_s2
                             else:
-                                self.balance += cycle_pnl
-                            print(f"\n[💰 TAKE-PROFIT KALSHI CONFIRMADO]: Posição vendida a {early_sell_price}¢ ({contract_count}x | Drift: {cur_bps:.1f} bps)!")
-                            print(f"   Payout: ${payout:.2f} | P&L: {cycle_pnl:+.2f} USD | Novo Saldo: ${self.balance:,.2f}")
+                                self.balance += pnl_be
+                            print(f"[🛡️ RAGHEE SCALE]: Runner protegido no Breakeven! Lucro Total do Trade: +${total_pnl:.2f} USD")
                             self.save_trade({
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "execution_mode": self.mode,
                                 "order_id": real_order_id,
-                                "sell_order_id": sell_order_id,
                                 "ticker": ticker,
                                 "count": contract_count,
                                 "strike": strike_price,
                                 "entry_price": entry_price,
                                 "target_side": target_side.upper(),
-                                "result": "VITÓRIA (TAKE-PROFIT)",
+                                "result": "VITÓRIA (BREAKEVEN RUNNER)",
                                 "sold_early": True,
-                                "sell_price": early_sell_price,
-                                "payout": payout,
-                                "cycle_pnl": round(cycle_pnl, 4),
+                                "sell_price": entry_price,
+                                "payout": round(tp1_pnl + stake + payout_be, 4),
+                                "cycle_pnl": round(total_pnl, 4),
                                 "balance": round(self.balance, 4)
                             })
                             self.clear_open_position()
@@ -760,41 +1041,68 @@ class KalshiTrader15M:
 
                 time.sleep(15)
 
-            # 6. Liquidação Oficial no Fechamento da Vela (se não saiu no Take-Profit)
+            # 6. Liquidação Oficial no Fechamento da Vela (se não saiu antecipado)
             if not sold_early:
-                time.sleep(10)
+                time.sleep(5)
                 official_winner = None
-                winner_source = "BINANCE_SPOT_ESTIMATED"
+                winner_source = "BENCHMARK_SPOT_ESTIMATED"
+                official_revenue_dollars = None
 
                 if self.mode == "LIVE":
-                    print(f"   -> Consultando oráculo oficial de liquidação na Kalshi API ({ticker})...")
-                    settle_info = self.client.get_market_settlement(ticker, max_retries=6)
-                    if settle_info and settle_info.get("result"):
-                        k_res = settle_info["result"].lower()  # 'yes' ou 'no'
+                    print(f"   -> [CFTC CLEARING] Consultando liquidação oficial no portfólio Kalshi ({ticker})...")
+                    port_settle = self.client.get_portfolio_settlement(ticker, max_retries=6, delay=3)
+                    if port_settle:
+                        k_res = str(port_settle.get("market_result", "")).lower()  # 'yes' ou 'no'
                         official_winner = "UP" if k_res == "yes" else "DOWN"
-                        winner_source = "KALSHI_OFFICIAL_ORACLE"
+                        winner_source = "KALSHI_PORTFOLIO_SETTLEMENT"
                         is_win = (target_side.lower() == k_res)
-                        print(f"   [🏛️ ORÁCULO OFICIAL KALSHI]: Resultado: {k_res.upper()} | Vencedor: {official_winner}")
+                        rev_cents = float(port_settle.get("revenue", 0))
+                        official_revenue_dollars = rev_cents / 100.0
+                        print(f"   [🏛️ LIQUIDAÇÃO OFICIAL KALSHI]: Resultado: {k_res.upper()} | Revenue: ${official_revenue_dollars:.2f} | Vencedor: {official_winner}")
+                    else:
+                        print(f"   -> Consultando oráculo secundário de mercado na Kalshi API ({ticker})...")
+                        settle_info = self.client.get_market_settlement(ticker, max_retries=3)
+                        if settle_info and settle_info.get("result"):
+                            k_res = settle_info["result"].lower()  # 'yes' ou 'no'
+                            official_winner = "UP" if k_res == "yes" else "DOWN"
+                            winner_source = "KALSHI_OFFICIAL_ORACLE"
+                            is_win = (target_side.lower() == k_res)
+                            print(f"   [🏛️ ORÁCULO DE MERCADO KALSHI]: Resultado: {k_res.upper()} | Vencedor: {official_winner}")
 
+                final_spot = get_kalshi_benchmark_spot() or spot_now
                 if official_winner is None:
-                    final_spot = get_binance_btc_spot() or spot_now
                     is_win = (final_spot >= strike_price) if target_side == "yes" else (final_spot < strike_price)
                     winner = "UP" if final_spot >= strike_price else "DOWN"
                 else:
                     winner = official_winner
-                    final_spot = get_binance_btc_spot() or spot_now
 
-                payout = round((1.00 * contract_count) if is_win else 0.00, 4)
-                cycle_pnl = round(payout - stake, 4)
-                if self.mode == "LIVE":
-                    time.sleep(5)
-                    b_info = self.client.get_real_balance()
-                    real_s2 = b_info.get("shard2_balance")
-                    if real_s2 and real_s2 > 0:
-                        self.balance = real_s2
+                if tp1_executed:
+                    payout_runner = official_revenue_dollars if official_revenue_dollars is not None else round((1.00 * contract_count) if is_win else 0.00, 4)
+                    pnl_runner = round(payout_runner - stake, 4)
+                    total_pnl = round(tp1_pnl + pnl_runner, 4)
+                    payout = round(tp1_pnl + stake + payout_runner, 4)
+                    cycle_pnl = total_pnl
+                    res_str = f"VITÓRIA SCALE RUNNER (+${total_pnl:.2f})" if is_win else f"DEFESA TP1 (+${total_pnl:.2f})"
+                    if self.mode == "LIVE":
+                        time.sleep(3)
+                        b_info = self.client.get_real_balance()
+                        real_s2 = b_info.get("shard2_balance")
+                        if real_s2 and real_s2 > 0:
+                            self.balance = real_s2
+                    else:
+                        self.balance += pnl_runner
                 else:
-                    self.balance += cycle_pnl
-                res_str = "VITÓRIA" if is_win else "DERROTA"
+                    payout = official_revenue_dollars if official_revenue_dollars is not None else round((1.00 * contract_count) if is_win else 0.00, 4)
+                    cycle_pnl = round(payout - stake, 4)
+                    if self.mode == "LIVE":
+                        time.sleep(3)
+                        b_info = self.client.get_real_balance()
+                        real_s2 = b_info.get("shard2_balance")
+                        if real_s2 and real_s2 > 0:
+                            self.balance = real_s2
+                    else:
+                        self.balance += cycle_pnl
+                    res_str = "VITÓRIA" if is_win else "DERROTA"
 
                 print(f"\n[🏁 APURAÇÃO FINAL KALSHI - JANELA CONCLUÍDA]:")
                 print(f"   Strike (K): ${strike_price:,.2f} | Final Spot: ${final_spot:,.2f} | Vencedor: {winner} ({winner_source})")
@@ -843,11 +1151,12 @@ class KalshiTrader15M:
         journal["losses"] = losses
         journal["win_rate"] = round((wins / total * 100), 1) if total > 0 else 0.0
 
+        atomic_write_json(JOURNAL_JSON, journal)
         try:
-            with open(JOURNAL_JSON, "w", encoding="utf-8") as f:
-                json.dump(journal, f, indent=2)
-        except Exception as e:
-            print(f"[Erro ao gravar kalshi_trading_journal.json]: {e}")
+            is_win = ("VITÓRIA" in str(trade_data.get("result", "")).upper()) or (float(trade_data.get("pnl", 0.0)) >= 0)
+            record_desk_trade_result("desk3", is_win=is_win, pnl=float(trade_data.get("pnl", 0.0)))
+        except Exception:
+            pass
 
     def start(self):
         print("\n" + "=" * 80)

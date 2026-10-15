@@ -44,6 +44,7 @@ from execution_math import (
     compute_fractional_kelly_stake,
     bayesian_fair_value
 )
+from variable_bench import bench
 
 # Garante suporte a UTF-8 no Windows
 if sys.platform == "win32":
@@ -413,6 +414,16 @@ class EthereumTrader5M:
 
                 # Avaliação de Nova Entrada (Janela 135s - 150s)
                 elif sec_in_window >= EVAL_POINT_SEC and sec_in_window <= 150:
+                    is_benched, bench_reason, bench_rem = bench.check_coin_flip_breaker("desk4", JOURNAL_JSON)
+                    if not is_benched:
+                        is_benched, bench_reason, bench_rem = bench.is_benched("desk4")
+                    if is_benched:
+                        print(f"   [🛑 VARIABLE BENCH]: Desk 4 em cooldown ({bench_reason}) — restam {bench_rem:.1f}s.")
+                        state["status_signal"] = f"Bench Cooldown ({bench_reason}: {bench_rem:.0f}s)"
+                        self.update_live_state(state)
+                        time.sleep(5)
+                        continue
+
                     if window_ts not in self.traded_windows and spot and strike:
                         mkt = get_polymarket_eth_market(window_ts)
                         if mkt:
@@ -440,7 +451,7 @@ class EthereumTrader5M:
                                             best_bid=book.get("best_bid", 0.0),
                                             best_ask=book.get("best_ask", 0.0),
                                             top_ask_size=book.get("top_ask_size", 0.0),
-                                            target_stake_usd=STAKE_AMOUNT,
+                                            target_stake_usd=FIXED_STAKE,
                                             max_tolerable_spread=0.050
                                         )
                                         if spread_ok:
@@ -506,6 +517,43 @@ class EthereumTrader5M:
                                                     continue
 
                                                 exec_price = vwap_price
+
+                                                # ── CÃO DE GUARDA JEV (Blindagem Anti-Exaustão e Anti-Repique ETH 5M) ──
+                                                try:
+                                                    from jev_microstructure_gate import jev_gate
+                                                    clob_sp = book.get("spread", 0.03)
+                                                    obi_val = book.get("top_imbalance", 0.0)
+                                                    jev_res = jev_gate.evaluate_entry(
+                                                        desk_id="desk8",
+                                                        delta_usd=delta,
+                                                        binance_drift=round(delta * 0.25, 2),
+                                                        clob_spread=clob_sp,
+                                                        contract_price=exec_price,
+                                                        oracle_discrepancy=0.20,
+                                                        seconds_left=int(sec_left),
+                                                        obi=obi_val,
+                                                        cvd=0.0,
+                                                        deadband_threshold=deadband,
+                                                        side=target_side,
+                                                        symbol="ETH"
+                                                    )
+                                                    if jev_res.get("verdict") == "VETO":
+                                                        print(f"[*] [ETH 5M] [🛑 VETO CÃO DE GUARDA JEV ETH]: {jev_res.get('veto_reason')} | Regime: {jev_res.get('candle_regime')}. Veto preventivo contra repique!")
+                                                        continue
+                                                except Exception as e:
+                                                    print(f"[*] [ETH 5M] [!] Aviso Jev Gate ETH: {e}")
+
+                                                is_maker_fill = False
+
+                                                # Estratégia Maker Post-Only Inteligente (Touch Quoting JEV):
+                                                # Se o spread for favorável (>= $0.02) e o touch estiver dentro do teto, cota 1 tick dentro do touch
+                                                best_bid_eth = book.get("best_bid", 0.0)
+                                                if book.get("spread", 0.0) >= 0.02 and best_bid_eth > 0 and (best_bid_eth + 0.01) <= PRIMARY_MAX_PRICE:
+                                                    touch_price = round(best_bid_eth + 0.01, 3)
+                                                    print(f"[*] [ETH 5M] [🎯 MAKER POST-ONLY JEV]: Cotando 1 tick dentro do touch a ${touch_price:.3f} (Bid: ${best_bid_eth:.3f} | VWAP Ask: ${vwap_price:.3f})")
+                                                    exec_price = touch_price
+                                                    is_maker_fill = True
+
                                                 contracts = round(target_stake / exec_price, 4)
                                                 pos_info = {
                                                     "window_ts": window_ts,
@@ -516,11 +564,13 @@ class EthereumTrader5M:
                                                     "entry_price": exec_price,
                                                     "contracts": contracts,
                                                     "stake": target_stake,
-                                                    "entry_time": datetime.now(timezone.utc).isoformat()
+                                                    "entry_time": datetime.now(timezone.utc).isoformat(),
+                                                    "maker_fill": is_maker_fill
                                                 }
                                                 self.save_open_position(pos_info)
                                                 self.traded_windows.add(window_ts)
-                                                print(f"[*] [ETH 5M {self.mode}] Ordem Executada com VWAP: {target_side} a ${exec_price:.4f} ({contracts} cotas, stake ${target_stake:.2f})")
+                                                fill_tag = " [MAKER TOUCH FILL]" if is_maker_fill else " [TAKER VWAP FILL]"
+                                                print(f"[*] [ETH 5M {self.mode}{fill_tag}] Ordem Executada: {target_side} a ${exec_price:.4f} ({contracts} cotas, stake ${target_stake:.2f})")
                                         else:
                                             print(f"[*] [ETH 5M] [SPREAD GATE VETO]: Spread fora da tolerância.")
 

@@ -30,7 +30,7 @@ import csv
 import urllib.request
 import threading
 import queue
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 import math
 from risk_gate import (
@@ -42,7 +42,10 @@ from risk_gate import (
     get_dynamic_deadband_gate,
     check_order_flow_imbalance_gate,
     check_altcoin_market_breadth_gate,
-    validate_clob_spread_gate
+    check_asia_session_drift_gate,
+    validate_clob_spread_gate,
+    check_dow_counter_trend_veto,
+    record_desk_trade_result
 )
 from execution_math import (
     calculate_vwap_ask,
@@ -56,6 +59,7 @@ from py_clob_client_v2 import (
     ClobClient,
     SignatureTypeV2,
     MarketOrderArgsV2,
+    OrderArgsV2,
     OrderType,
     BalanceAllowanceParams,
     AssetType
@@ -64,6 +68,8 @@ from binance_liquidation_watcher import get_liquidation_watcher
 from binance_cvd_watcher import get_cvd_watcher
 from py_clob_client_v2.order_builder.builder import ROUNDING_CONFIG
 from anti_sweep_shield import evaluate_anti_sweep_shield
+from variable_bench import bench
+from jev_microstructure_gate import jev_gate
 
 # Patch de precisao do py_clob_client_v2:
 # O CLOB da Polymarket aceita no maximo 4 casas decimais no takerAmount para market buy orders.
@@ -96,7 +102,8 @@ MAX_LOSS_LIMIT = -5.00    # Stop loss diario (-$5.00 USDC)
 TAKE_PROFIT_LIMIT = 50.00 # Take profit aumentado para +$50.00 USDC
 DRAWDOWN_FLOOR_USDC = 15.00 # Piso absoluto de preservacao de capital ($15.00 USDC)
 MAX_SESSION_DRAWDOWN = 4.00 # Perda maxima permitida na sessao ($4.00 USDC)
-MAX_ORACLE_STRIKE_DISCREPANCY_USD = 55.0 # Teto maximo de discrepancia Binance vs Chainlink na abertura (~6.5 bps / JEV 86%)
+MAX_ORACLE_STRIKE_DISCREPANCY_BPS = 0.0014 # Teto dinâmico de 14 bps (~$116 a $83k BTC / JEV Consensus 100%)
+MAX_ORACLE_STRIKE_DISCREPANCY_FLOOR_USD = 85.00 # Piso mínimo absoluto em USD para absorver basis natural Binance vs Chainlink
 
 def load_env_config() -> Dict[str, str]:
     """Carrega variaveis do arquivo .env"""
@@ -113,23 +120,24 @@ def load_env_config() -> Dict[str, str]:
 def get_shared_wallet_sol_impact() -> float:
     """
     Calcula o impacto financeiro acumulado (lucro/prejuízo líquido real) das operações
-    do Desk 2 (SOL) na carteira Polygon Safe compartilhada, para isolar a contabilidade do Desk 1.
+    compartilhadas (Desk 2 SOL e Desk 3B BTC 15m) na carteira Polygon Safe compartilhada,
+    para isolar a contabilidade do Desk 1.
     """
-    sol_journal_path = os.path.join(BASE_DIR, "sol_trading_journal.json")
-    if not os.path.exists(sol_journal_path):
-        return 0.0
-    try:
-        with open(sol_journal_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        mode = str(data.get("mode", "")).upper()
-        # Se SOL esteve em LIVE, soma o PnL de todos os trades live
-        sol_pnl = 0.0
-        if "LIVE" in mode:
-            for t in data.get("trades", []):
-                sol_pnl += float(t.get("pnl", 0.0))
-        return round(sol_pnl, 2)
-    except Exception:
-        return 0.0
+    total_shared_pnl = 0.0
+    for j_name in ["sol_trading_journal.json", "desk3b_btc15m_live_journal.json"]:
+        j_path = os.path.join(BASE_DIR, j_name)
+        if not os.path.exists(j_path):
+            continue
+        try:
+            with open(j_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            mode = str(data.get("mode", "")).upper()
+            if "LIVE" in mode:
+                for t in data.get("trades", []):
+                    total_shared_pnl += float(t.get("pnl", 0.0))
+        except Exception:
+            pass
+    return round(total_shared_pnl, 2)
 
 def _atomic_json_write(path: str, data: dict):
     """Grava JSON de forma atomica usando modulo central risk_gate"""
@@ -200,10 +208,11 @@ def get_chainlink_price() -> Optional[float]:
     cfg = load_env_config()
     custom_rpc = cfg.get("POLYGON_RPC_URL") or cfg.get("RPC_URL")
     rpcs = [
+        "https://polygon-mainnet.g.alchemy.com/v2/alch_SpigbpkWNlbSTj_AbkO4I",
+        "https://polygon-bor.publicnode.com",
         "https://polygon.drpc.org",
         "https://gateway.tenderly.co/public/polygon",
-        "https://polygon.publicnode.com",
-        "https://polygon-bor.publicnode.com"
+        "https://polygon.publicnode.com"
     ]
     if custom_rpc and custom_rpc not in rpcs:
         rpcs.insert(0, custom_rpc)
@@ -745,6 +754,7 @@ class LiveTrader:
                                 self.current_balance = real_bal
                                 self.session_pnl = jdata["session_pnl"]
                                 self.cumulative_cycle_pnl = round(sum(float(t.get("cycle_pnl", 0.0)) for t in jdata.get("trades", [])), 2)
+                                record_desk_trade_result("desk1", is_win=(new_cycle_pnl >= 0), pnl=new_cycle_pnl)
                             except Exception as ej:
                                 print(f"       [Erro ao atualizar JSON na reconciliação]: {ej}")
 
@@ -932,6 +942,7 @@ class LiveTrader:
                                 actual_tx = fill["tx_hash"] or actual_tx
                         early_payout = round(sell_shares * actual_price, 2)
                         print(f"       -> STOP-LOSS EXECUTADO COM SUCESSO! Tx: {early_tx}")
+                        bench.sit("desk1", "post_stop_loss_quarantine", 300)
                         print(f"       -> Preço Real de Venda: ${actual_price:.2f} | Saldo resgatado da posicao: ${early_payout:.2f} USDC (Perda estancada em -${(1.00 - early_payout):.2f})")
                         return {
                             "success": True,
@@ -948,8 +959,8 @@ class LiveTrader:
             print(f"       [Stop-loss dispensado]: Best Bid (${best_bid_primary:.2f}) < ${STOP_LOSS_MIN_BID:.2f}. Mantendo risco travado em $1.00.")
         return {"success": False}
 
-    def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None, max_price: Optional[float] = None) -> Dict[str, Any]:
-        """Cria e envia ordem a mercado real para o Polymarket CLOB V2 (BUY em USDC, SELL em cotas)"""
+    def place_live_order(self, token_id: str, side: str, amount: float, price: Optional[float] = None, max_price: Optional[float] = None, post_only: bool = False) -> Dict[str, Any]:
+        """Cria e envia ordem real para o Polymarket CLOB V2 (BUY em USDC ou cotas, SELL em cotas; suporta post_only Maker)"""
         halted, halt_msg = is_system_halted()
         if halted:
             print(f"\n[🛑 RISK GATE VETO]: Ordem LIVE bloqueada: {halt_msg}")
@@ -973,16 +984,29 @@ class LiveTrader:
         order_price = price if price is not None else 0
 
         try:
-            market_args = MarketOrderArgsV2(
-                token_id=token_id,
-                amount=amount,
-                side=side,
-                price=order_price,
-                order_type=OrderType.FAK
-            )
-            signed_order = self.client.create_market_order(market_args)
-            resp = self.client.post_order(signed_order, order_type=OrderType.FAK)
-            return {"status": "SUCCESS", "response": resp}
+            if post_only and order_price > 0:
+                # Maker Inteligente (JEV Touch Quoting): Ordem limite Post-Only GTC que descansa no livro
+                calc_size = round(amount / order_price, 2) if side == "BUY" else round(amount, 2)
+                order_args = OrderArgsV2(
+                    token_id=token_id,
+                    price=order_price,
+                    size=calc_size,
+                    side=side
+                )
+                signed_order = self.client.create_order(order_args)
+                resp = self.client.post_order(signed_order, order_type=OrderType.GTC, post_only=True)
+                return {"status": "SUCCESS", "response": resp, "maker_post_only": True}
+            else:
+                market_args = MarketOrderArgsV2(
+                    token_id=token_id,
+                    amount=amount,
+                    side=side,
+                    price=order_price,
+                    order_type=OrderType.FAK
+                )
+                signed_order = self.client.create_market_order(market_args)
+                resp = self.client.post_order(signed_order, order_type=OrderType.FAK)
+                return {"status": "SUCCESS", "response": resp}
         except Exception as e:
             err_str = str(e)
             # Reconciliação Anti-Trade Fantasma:
@@ -1104,6 +1128,17 @@ class LiveTrader:
             time.sleep(15)
             return
 
+        # Checagem do Variable Bench e Disjuntores (Universal 2-Loss + Coin-Flip - JEV AI)
+        is_benched, b_reason, b_rem = bench.check_consecutive_losses_breaker("desk1", self.journal_json, max_consecutive_losses=2, cooldown_seconds=1800)
+        if not is_benched:
+            is_benched, b_reason, b_rem = bench.check_coin_flip_breaker("desk1", self.journal_json)
+        if not is_benched:
+            is_benched, b_reason, b_rem = bench.is_benched("desk1")
+        if is_benched:
+            print(f"    [🛑 VARIABLE BENCH]: Desk 1 em cooldown ({b_reason}) — restam {b_rem:.1f}s. Aguardando...")
+            time.sleep(min(15, max(2, int(b_rem))))
+            return
+
         # 3. Busca Strike Price Oficial (Oraculo Chainlink) e Abertura Binance
         strike_captured_late = False
         if window_ts in self.candle_strikes:
@@ -1199,6 +1234,7 @@ class LiveTrader:
         dynamic_deadband, diurnal_regime = get_dynamic_deadband_gate(
             strike, base_bps=DEADBAND_BPS, min_floor=DEADBAND_MIN_FLOOR
         )
+        deadband_threshold = dynamic_deadband
 
         if delta >= dynamic_deadband:
             target_side = "UP"
@@ -1248,11 +1284,11 @@ class LiveTrader:
                     print("       -> Preservando capital! Aposta cancelada para não cair na armadilha de liquidação do oráculo TWAP.")
                     should_trade_primary = False
 
-        # REGRA DE DISCREPÂNCIA DE ORÁCULO LEAD-LAG (Auditoria JEV: 86% Convicção / Prevenção Ciclo 156)
+        # REGRA DE DISCREPÂNCIA DE ORÁCULO LEAD-LAG (Auditoria JEV: 100% Convicção BPS Dinâmico)
         if should_trade_primary:
             initial_spread = abs(binance_open - strike) if (binance_open and strike) else abs(feed_diff)
             eval_spread = abs(spread_eval)
-            max_discrepancy = max(MAX_ORACLE_STRIKE_DISCREPANCY_USD, round(strike * 0.00065, 2))
+            max_discrepancy = max(MAX_ORACLE_STRIKE_DISCREPANCY_FLOOR_USD, round(strike * MAX_ORACLE_STRIKE_DISCREPANCY_BPS, 2))
             if initial_spread > max_discrepancy or eval_spread > max_discrepancy:
                 print(f"\n    [🛡️ VETO DISCREPÂNCIA DE ORÁCULO LEAD-LAG]:")
                 print(f"       Spread Binance vs Chainlink na Abertura: ${initial_spread:.2f} | Aos 135s: ${eval_spread:.2f} (Máx Tolerado: ${max_discrepancy:.2f})")
@@ -1266,6 +1302,25 @@ class LiveTrader:
         if should_trade_primary and self._is_past_deadline(window_ts, 295):
             print(f"\n    [🛡️ FILTRO DEADLINE]: Tempo decorrido (>295s) proximo ao fechamento. Entrada primaria abortada.")
             should_trade_primary = False
+
+        # REGRA DE PROTEÇÃO CONTRA CONTRATENDÊNCIA DOW REGIME (Charles Dow & Raghee Horner / JEV AI - Fail-Safe Blindado)
+        if should_trade_primary:
+            try:
+                dow_ok, dow_msg, dow_info = check_dow_counter_trend_veto(
+                    target_side=target_side,
+                    symbol="BTCUSDT",
+                    min_slope_bps=8.0,
+                    deadband_delta=delta,
+                    strong_reversal_threshold=2.0 * deadband_threshold
+                )
+                if not dow_ok:
+                    print(f"\n    [🛡️ VETO DOW REGIME - JEV]: {dow_msg}")
+                    print(f"       -> Preservando capital! Operação contra a tendência macro de Charles Dow (Slope: {dow_info.get('dow_slope_bps', 0.0):+.1f} bps).")
+                    should_trade_primary = False
+                else:
+                    print(f"    [📈 DOW REGIME SHIELD]: {dow_msg}")
+            except Exception as e:
+                print(f"    [🛡️ FAIL-SAFE GATE - DOW REGIME]: Exceção secundária capturada com segurança ({e}). Prosseguindo com trade primário.")
 
         # 6. Execucao da Ordem Real Primaria (se aprovada pelos filtros)
         has_primary = False
@@ -1356,6 +1411,38 @@ class LiveTrader:
                 print("       -> Preservando capital! Entrada primária cancelada por ausência de profundidade confirmada.")
                 should_trade_primary = False
 
+        # Continuação dos filtros de risco...
+        if should_trade_primary:
+            # ── JEV MICROSTRUCTURE GATE (MODO LIVE ATIVO) ───────────────────
+            oracle_disc = abs((binance_eval or spot_eval) - spot_eval)
+            clob_sp = ob_metrics["spread"] if ob_metrics else 0.04
+            obi_val = ob_metrics.get("top_imbalance", 0.0) if ob_metrics else 0.0
+            jev_eval = jev_gate.evaluate_entry(
+                desk_id="desk1",
+                delta_usd=delta,
+                binance_drift=binance_drift,
+                clob_spread=clob_sp,
+                contract_price=estimated_price,
+                oracle_discrepancy=oracle_disc,
+                seconds_left=max(0, 300 - now_sec),
+                obi=obi_val,
+                cvd=0.0,
+                deadband_threshold=deadband_threshold,
+                side=target_side,
+                symbol="BTC"
+            )
+            # JEV ADVISORY MODE: avalia e loga o regime, mas nunca bloca a trade.
+            # Para activar VETO real: defina JEV_LIVE_GATE=true no .env
+            jev_verdict = jev_eval.get("verdict", "APPROVE_BYPASS")
+            jev_regime  = jev_eval.get("candle_regime", "?")
+            jev_score   = jev_eval.get("would_veto", 0.0)
+            jev_ms      = jev_eval.get("elapsed_ms", 0)
+            if jev_verdict == "VETO":
+                print(f"\n    [🧠 JEV ADVISORY - VETO OBSERVADO]: {jev_eval.get('veto_reason')}")
+                print(f"       -> Regime: {jev_regime} | Score: {jev_score} | {jev_ms}ms | (MODO ADVISORY: trade continua)")
+            else:
+                print(f"    [🧠 JEV ADVISORY]: Regime: {jev_regime} | Score: {jev_score} | Veredito: {jev_verdict} ({jev_ms}ms)")
+
             # Consulta preco real de execucao no livro CLOB se ainda elegivel
             if should_trade_primary:
                 try:
@@ -1417,6 +1504,22 @@ class LiveTrader:
                     print(f"       [🔥 ALTA CONVICÇÃO CVD/OFI]: Fluxo institucional 100% alinhado com {target_side} ({net_cvd_btc:+.1f} BTC)!")
                     rationale += f" + Convicção CVD/OFI ({cvd_stats['dominant_signal']}, {net_cvd_btc:+.1f} BTC)"
 
+                # REGRA 4.1: Detector de Velocidade e Aceleração Lead-Lag (Polymarket 2025 Bot Model)
+                if should_trade_primary:
+                    velo_data = self.cvd_watcher.get_velocity_lead_lag(window_seconds=3.0, min_velocity_threshold=12.0)
+                    v_usd_s = velo_data.get("velocity_usd_sec", 0.0)
+                    v_disp = velo_data.get("price_displacement", 0.0)
+                    v_dir = velo_data.get("direction", "NEUTRAL")
+
+                    if velo_data.get("is_high_velocity", False):
+                        if (target_side == "UP" and v_dir == "DOWN") or (target_side == "DOWN" and v_dir == "UP"):
+                            print(f"       [🛡️ VETO VELOCIDADE ADVERSA (SPEED GAP LEAD-LAG)]: Binance acelerando contra {target_side} ({v_usd_s:+.1f} $/s, deslocamento: ${v_disp:+.1f})!")
+                            print("       -> Preservando capital! Abortando entrada para não ser atropelado pela Binance no fechamento da janela de 2.7s.")
+                            should_trade_primary = False
+                        elif (target_side == "UP" and v_dir == "UP") or (target_side == "DOWN" and v_dir == "DOWN"):
+                            print(f"       [⚡ ALTA CONVICÇÃO LEAD-LAG]: Binance acelerando forte a favor de {target_side} ({v_usd_s:+.1f} $/s, deslocamento: ${v_disp:+.1f})!")
+                            rationale += f" + Speed Lead-Lag ({v_usd_s:+.1f} $/s, ${v_disp:+.1f})"
+
                 # Gate de Amplitude e Toxic Flow de Altcoins (JEV Lote 3 - Anti-Fakeout)
                 if should_trade_primary:
                     try:
@@ -1435,6 +1538,21 @@ class LiveTrader:
                             should_trade_primary = False
                         else:
                             print(f"       [✅ BREADTH ALTCOINS]: Fluxo cruzado SOL/ETH sem divergências críticas contra {target_side}.")
+                    except Exception:
+                        pass
+
+                # Gate de Viés de Sessão Asiática (CacheCarti Alpha / 7-Stage Validated)
+                if should_trade_primary:
+                    try:
+                        cur_hour = datetime.now(timezone.utc).hour if "timezone" in globals() else None
+                        asia_ok, asia_msg, asia_info = check_asia_session_drift_gate(target_side=target_side, current_utc_hour=cur_hour)
+                        if not asia_ok:
+                            print(f"       [🛡️ FILTRO ASIA DRIFT BIAS VETO (CacheCarti Alpha)]: {asia_msg}")
+                            print("       -> Preservando capital! Abortando entrada: Sinal contra a tendência estrutural da sessão asiática.")
+                            should_trade_primary = False
+                        elif asia_info.get("is_us_session") and abs(asia_info.get("asia_drift_bps", 0.0)) >= 25.0:
+                            print(f"       [🔥 ALTA CONVICÇÃO ASIA-US FLOW]: Trade {target_side} alinhado com drift asiático ({asia_info['asia_drift_bps']:+.1f} bps)!")
+                            rationale += f" + Alinhamento Ásia ({asia_info['asia_drift_bps']:+.1f} bps)"
                     except Exception:
                         pass
 
@@ -1512,10 +1630,42 @@ class LiveTrader:
         if should_trade_primary:
             print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice/VWAP): ${estimated_price:.4f}")
             print(f"       Racional: {rationale}")
-            print(f"       Enviando ordem de ${primary_stake:.2f} USDC para a CLOB V2...")
-            limit_p = min(PRIMARY_MAX_PRICE, round(estimated_price + 0.01, 2))
-            order_res = self.place_live_order(target_token, "BUY", primary_stake, price=limit_p, max_price=PRIMARY_MAX_PRICE)
-            print(f"       Resultado do Envio Primário: {order_res.get('status')}")
+            maker_entry_attempted = False
+            best_bid_clob = ob_metrics["best_bid"] if ob_metrics else 0.0
+            best_ask_clob = ob_metrics["best_ask"] if ob_metrics else 0.0
+
+            # Estratégia Maker Post-Only Inteligente (Touch Quoting JEV):
+            # Se o spread permitir (>= 0.02) e o preço touch estiver dentro da margem, posta 1 tick dentro do touch
+            if ob_metrics and spread >= 0.02 and best_bid_clob > 0 and (best_bid_clob + 0.01) <= PRIMARY_MAX_PRICE:
+                touch_price = round(best_bid_clob + 0.01, 2)
+                print(f"       [🎯 MAKER POST-ONLY JEV]: Cotando 1 tick dentro do spread a ${touch_price:.2f} (Best Bid: ${best_bid_clob:.2f} | Best Ask: ${best_ask_clob:.2f})...")
+                post_res = self.place_live_order(target_token, "BUY", primary_stake, price=touch_price, max_price=PRIMARY_MAX_PRICE, post_only=True)
+                if post_res.get("status") == "SUCCESS":
+                    maker_order_id = post_res.get("response", {}).get("orderID", "")
+                    print(f"       -> Ordem Post-Only enviada com sucesso (ID: {maker_order_id})! Aguardando fill passivo...")
+                    maker_entry_attempted = True
+                    for _mk_chk in range(5):  # Monitora por até 10 segundos
+                        time.sleep(2.0)
+                        mk_bal = self.get_token_balance(target_token) if self.execution_mode != "paper" else (primary_stake / touch_price)
+                        if mk_bal and mk_bal >= 0.5:
+                            order_res = post_res
+                            estimated_price = touch_price
+                            print(f"       🎉 [MAKER FILL CONCLUÍDO]: Ordem preenchida passivamente a ${touch_price:.2f}! Spread capturado com sucesso.")
+                            break
+                    if not (mk_bal and mk_bal >= 0.5) and self.execution_mode != "paper":
+                        print(f"       [⏳ MAKER TIMEOUT]: Ordem Post-Only não preenchida em 10s. Cancelando ordem resting para evitar slippage tardio...")
+                        try:
+                            if maker_order_id:
+                                self.client.cancel_order(maker_order_id)
+                        except Exception:
+                            pass
+                        maker_entry_attempted = False
+
+            if not maker_entry_attempted:
+                limit_p = min(PRIMARY_MAX_PRICE, round(estimated_price + 0.01, 2))
+                order_res = self.place_live_order(target_token, "BUY", primary_stake, price=limit_p, max_price=PRIMARY_MAX_PRICE, post_only=False)
+                print(f"       Resultado do Envio Primário: {order_res.get('status')}")
+
             if order_res.get("status") == "SUCCESS":
                 resp_data = order_res.get("response", {})
                 order_id = resp_data.get("orderID") or "EXECUTED"
@@ -2125,19 +2275,21 @@ class LiveTrader:
             # Saldo efetivo reconciliado da sessão: variacao de USDC na sessão atribuível ao BTC + cotas pendentes da sessão
             effective_wallet_delta = round(btc_wallet_session_delta + self.session_pending_unredeemed, 2)
             expected_balance_by_trades = round(self.session_initial_balance + self.session_pnl_trades, 2)
-            parity_gap = abs(effective_wallet_delta - self.session_pnl_trades)
-            if parity_gap > 1.50:
-                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${parity_gap:.2f} detectada na sessão!")
+            parity_gap = round(self.session_pnl_trades - effective_wallet_delta, 2)
+            if abs(parity_gap) > 1.50:
+                print(f"\n    [⚠️ ALERTA DE PARIDADE CONTÁBIL]: Divergência de ${abs(parity_gap):.2f} detectada na sessão!")
                 print(f"       Resultado Teórico dos Trades da Sessão: {self.session_pnl_trades:+.2f} USDC (Esperado: ${expected_balance_by_trades:.2f})")
                 print(f"       Variação USDC Total na Carteira:        {wallet_session_delta:+.2f} USDC (Atual: ${new_balance:.2f})")
                 if abs(sol_impact) > 0.001:
-                    print(f"       Impacto Isolado Desk 2 (SOL):           {sol_impact:+.2f} USDC")
+                    print(f"       Impacto Desks Compartilhados (SOL/BTC15M): {sol_impact:+.2f} USDC")
                 print(f"       Cotas Pendentes de Resgate da Sessão:   +${self.session_pending_unredeemed:.2f} USDC")
                 print(f"       Delta Efetivo Reconciliado BTC:         {effective_wallet_delta:+.2f} USDC")
                 if parity_gap > 3.50:
-                    print(f"       [🚨 CIRCUIT BREAKER]: Divergência excessiva (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
+                    print(f"       [🚨 CIRCUIT BREAKER]: Vazamento de capital não reconciliado (${parity_gap:.2f} > $3.50). Congelando novas entradas para auditoria.")
                     self.is_halted = True
-                    self.halt_reason = f"Divergência contábil de carteira (${parity_gap:.2f})"
+                    self.halt_reason = f"Vazamento contábil de carteira (${parity_gap:.2f})"
+                elif parity_gap < -3.50:
+                    print(f"       [ℹ️ SUPERÁVIT DE CARTEIRA]: Carteira com superávit (+${abs(parity_gap):.2f}) decorrente de resgates ou outros desks ativos. Operação regular mantida.")
 
             # Travas de Drawdown Pós-Ciclo
             if new_balance < DRAWDOWN_FLOOR_USDC:

@@ -23,6 +23,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from risk_gate import is_system_halted, atomic_write_json, safe_read_json
+from cross_venue_sor import SmartOrderRouter
 
 # Suporte UTF-8 no Windows
 if sys.platform == "win32":
@@ -401,13 +402,17 @@ def match_pairs(poly_mkts: List[Dict[str, Any]], kalshi_mkts: List[Dict[str, Any
 
                 divergence_pct = abs(p_yes - k_yes) * 100.0
 
-                # Kelly Sizing
-                p_win = 0.99
-                b_ratio = max(best_roi / 100.0, 0.01)
-                kelly_pct = max(min((p_win * b_ratio - (1 - p_win)) / b_ratio, 0.25), 0.02)
-                suggested_stake = round(max(min(21.50, 10.36) * kelly_pct, 1.00), 2)
+                # Smart Order Routing (SOR Institucional)
+                sor = SmartOrderRouter(min_profit_threshold=Decimal("0.015"))
+                sor_plan = sor.plan_cross_arbitrage(
+                    poly_yes_ask=p_yes,
+                    poly_no_ask=p_no,
+                    kalshi_yes_ask=k_yes,
+                    kalshi_no_ask=k_no,
+                    max_bankroll_usd=20.0
+                )
 
-                pairs.append({
+                pair_data = {
                     "topic": topic,
                     "polymarket_title": p["question"],
                     "polymarket_yes": round(p_yes, 3),
@@ -425,9 +430,16 @@ def match_pairs(poly_mkts: List[Dict[str, Any]], kalshi_mkts: List[Dict[str, Any
                     "roi_pct": round(best_roi, 2),
                     "divergence_spread_pct": round(divergence_pct, 1),
                     "is_pure_arbitrage": (best_cost <= ARB_ALERT_THRESHOLD),
+                    "is_risk_free_arbitrage": (best_cost < 1.0),
                     "suggested_stake_usd": suggested_stake,
+                    "sor_active": sor_plan.found,
+                    "sor_strategy": sor_plan.strategy if sor_plan.found else "NENHUMA",
+                    "sor_balanced_contracts": float(sor_plan.max_contracts),
+                    "sor_expected_profit_usd": float(sor_plan.expected_profit_usd),
                     "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                }
+
+                pairs.append(pair_data)
 
     # Remove duplicados e ordena por menor custo total (maior lucro)
     unique_pairs = []
@@ -461,6 +473,29 @@ def run_desk7_cycle() -> Dict[str, Any]:
     poly_mkts = fetch_polymarket_markets()
     kalshi_mkts = fetch_kalshi_markets()
     print(f"-> Mercados Coletados: Polymarket ({len(poly_mkts)}) | Kalshi ({len(kalshi_mkts)})")
+
+    # Filtrar por prazo curto (≤7 dias) e liquidez mínima (≥100k USD 24h)
+    def _is_short_term(market: dict) -> bool:
+        # Polymarket usa 'end_date', Kalshi usa 'close_time'
+        date_str = market.get('end_date') or market.get('close_time')
+        if not date_str:
+            return False
+        try:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        except Exception:
+            try:
+                ts = int(date_str)
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            except Exception:
+                return False
+        now = datetime.now(timezone.utc)
+        delta = dt - now
+        # positivo e dentro de 7 dias
+        return 0 < delta.total_seconds() <= 7 * 24 * 3600
+
+    # Aplicar filtros a ambas as listas
+    poly_mkts = [m for m in poly_mkts if _is_short_term(m) and m.get('volume', 0) >= 100_000]
+    kalshi_mkts = [m for m in kalshi_mkts if _is_short_term(m) and m.get('volume', 0) >= 100_000]
 
     # 2. Pareamento Semântico
     opportunities = match_pairs(poly_mkts, kalshi_mkts)
