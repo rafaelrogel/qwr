@@ -958,8 +958,13 @@ def check_kalshi_synpath_fomo_gate(
             t_str = tr_info.get("created_time", "")
             if t_str:
                 try:
-                    dt = datetime.fromisoformat(t_str.replace("Z", "+00:00"))
-                    t_ms = int(dt.timestamp() * 1000)
+                    t_clean = t_str.replace("Z", "").replace("+00:00", "")
+                    parts = t_clean.split(".")
+                    base_dt = datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                    t_ms = int(base_dt.timestamp() * 1000)
+                    if len(parts) > 1:
+                        frac = (parts[1] + "000000")[:6]
+                        t_ms += int(frac) // 1000
                     if (now_ms - t_ms) <= (window_sec * 1000):
                         recent.append(tr)
                 except Exception:

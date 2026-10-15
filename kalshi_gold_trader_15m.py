@@ -30,7 +30,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any, List, Tuple
 
-from risk_gate import compute_kalshi_dynamic_contracts, atomic_write_json, safe_read_json, record_desk_trade_result
+from risk_gate import compute_kalshi_dynamic_contracts, atomic_write_json, safe_read_json, record_desk_trade_result, check_kalshi_synpath_fomo_gate
 from execution_math import calculate_black_scholes_digital_fv
 from variable_bench import bench
 from jev_microstructure_gate import jev_gate
@@ -781,6 +781,27 @@ class GoldTrader15M:
                                     time.sleep(15)
                                     continue
 
+                                # ── FILTRO ANTI-FOMO TAKER FLOW (SYNPATH TICK-LEVEL REAL-TIME) ──
+                                # Validado no Backtest de 49 operações do Desk 7 (KXGOLD15M):
+                                # Elimina exaustão institucional (Vol >= 15k & Imbalance > +0.50) com 0 vitórias sacrificadas
+                                fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                    ticker=ticker,
+                                    target_side=target_side,
+                                    threshold=0.50,
+                                    min_volume=15000.0,
+                                    window_sec=60
+                                )
+                                if not fomo_ok:
+                                    print(f"   [🛑 VETO SYNPATH ANTI-FOMO TAKER FLOW OURO]: {fomo_msg}")
+                                    print(f"      -> Fluxo Taker Imbalance: {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                    print(f"      -> Abortando entrada para evitar topo de exaustão institucional no Ouro!")
+                                    state["status_signal"] = f"Veto Synpath FOMO ({fomo_data.get('imbalance', 0):+.2f})"
+                                    self.update_live_state(state)
+                                    time.sleep(15)
+                                    continue
+                                else:
+                                    print(f"   [📊 SYNPATH TAKER FLOW OURO]: {fomo_msg}")
+
                                 delta_ratio = abs(delta) / max(0.1, deadband)
                                 win_prob = 0.75
                                 if delta_ratio >= 1.5:
@@ -917,6 +938,25 @@ class GoldTrader15M:
                                     self.update_live_state(state)
                                     time.sleep(15)
                                     continue
+
+                                # ── FILTRO ANTI-FOMO TAKER FLOW SWEEPER (SYNPATH TICK-LEVEL REAL-TIME) ──
+                                fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                    ticker=ticker,
+                                    target_side=target_side,
+                                    threshold=0.50,
+                                    min_volume=15000.0,
+                                    window_sec=60
+                                )
+                                if not fomo_ok:
+                                    print(f"   [🛑 VETO SYNPATH ANTI-FOMO TAKER FLOW SWEEPER OURO]: {fomo_msg}")
+                                    print(f"      -> Fluxo Taker Imbalance: {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                    print(f"      -> Abortando varredura Sweeper para evitar topo de exaustão institucional no Ouro!")
+                                    state["status_signal"] = f"Veto Synpath Sweeper FOMO ({fomo_data.get('imbalance', 0):+.2f})"
+                                    self.update_live_state(state)
+                                    time.sleep(15)
+                                    continue
+                                else:
+                                    print(f"   [📊 SYNPATH TAKER FLOW SWEEPER OURO]: {fomo_msg}")
 
                                 delta_ratio = abs(delta) / max(0.1, deadband)
                                 win_prob = 0.85
