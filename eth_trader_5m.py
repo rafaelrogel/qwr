@@ -35,7 +35,8 @@ from risk_gate import (
     validate_executable_edge_gate,
     compute_dynamic_stake,
     get_dynamic_deadband_gate,
-    validate_clob_spread_gate
+    validate_clob_spread_gate,
+    check_kalshi_synpath_fomo_gate
 )
 from execution_math import (
     calculate_vwap_ask,
@@ -542,6 +543,32 @@ class EthereumTrader5M:
                                                         continue
                                                 except Exception as e:
                                                     print(f"[*] [ETH 5M] [!] Aviso Jev Gate ETH: {e}")
+
+                                                # ── CROSS-VENUE SYNPATH FOMO TAKER FLOW GATE (ETH DUAL-VENUE INTELLIGENCE) ──
+                                                try:
+                                                    from zoneinfo import ZoneInfo
+                                                    end_s = ((int(time.time()) // 900) + 1) * 900
+                                                    end_u = datetime.fromtimestamp(end_s, tz=timezone.utc)
+                                                    end_ny = end_u.astimezone(ZoneInfo("America/New_York"))
+                                                    k_ticker = f"KXETH15M-{end_ny.strftime('%y')}{end_ny.strftime('%b').upper()}{end_ny.strftime('%d')}{end_ny.strftime('%H')}{end_ny.strftime('%M')}-{end_ny.strftime('%M')}"
+                                                    k_side = "YES" if target_side == "UP" else "NO"
+
+                                                    fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                                        ticker=k_ticker,
+                                                        target_side=k_side,
+                                                        threshold=0.70,
+                                                        min_volume=50.0,
+                                                        window_sec=60
+                                                    )
+                                                    if not fomo_ok:
+                                                        print(f"[*] [ETH 5M] [🛑 VETO CROSS-VENUE SYNPATH ANTI-FOMO]: {fomo_msg}")
+                                                        print(f"    -> Kalshi {k_ticker}: Imbalance {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                                        print(f"    -> Varejo comprando no topo de exaustão na Kalshi. Abortando entrada no Polymarket para proteger capital!")
+                                                        continue
+                                                    else:
+                                                        print(f"[*] [ETH 5M] [📊 CROSS-VENUE SYNPATH FLOW]: {fomo_msg} (Kalshi {k_ticker})")
+                                                except Exception as e:
+                                                    print(f"[*] [ETH 5M] [Aviso Cross-Venue Synpath Gate]: {e}")
 
                                                 is_maker_fill = False
 

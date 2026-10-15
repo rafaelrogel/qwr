@@ -39,7 +39,7 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any, List
 
-from risk_gate import compute_kalshi_dynamic_contracts, atomic_write_json, record_desk_trade_result
+from risk_gate import compute_kalshi_dynamic_contracts, atomic_write_json, record_desk_trade_result, check_kalshi_synpath_fomo_gate
 from variable_bench import bench
 
 # ==============================================================================
@@ -1086,6 +1086,38 @@ class KalshiNatGasTrader15M:
             print(f"   [JEV SIZE GATE]: Kelly reduzido de {contracts_bought}x para {adjusted}x (frac={jev_kelly_frac:.2f})")
             contracts_bought = adjusted
 
+
+        # ── FILTRO ANTI-FOMO TAKER FLOW (SYNPATH TICK-LEVEL REAL-TIME) ──
+        # Validado empiricamente no Desk 5 (KXNATGAS15M):
+        # Elimina compras no topo de exaustão institucional (> +0.50 & Vol >= 5k)
+        fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+            ticker=ticker,
+            target_side=candidate_side.upper(),
+            threshold=0.50,
+            min_volume=5000.0,
+            window_sec=60
+        )
+        if not fomo_ok:
+            print(f"\n   [🛑 VETO SYNPATH ANTI-FOMO NATGAS]: {fomo_msg}")
+            print(f"      -> Fluxo Taker Imbalance: {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+            print(f"      -> Abortando entrada para proteger capital contra armadilha de exaustão institucional!")
+            self.update_live_state({
+                "ticker": ticker,
+                "strike": strike_price,
+                "spot": spot_now,
+                "delta": round(delta, 5),
+                "deadband": dynamic_deadband,
+                "seconds_elapsed": elapsed_sec,
+                "seconds_left": remaining_sec,
+                "progress_pct": round((elapsed_sec / 900) * 100, 1),
+                "mode": self.mode,
+                "balance": self.balance,
+                "status_signal": f"🛑 VETO SYNPATH FOMO: Imbalance {fomo_data.get('imbalance', 0):+.2f}"
+            })
+            time.sleep(max(1, remaining_sec))
+            return
+        else:
+            print(f"   [📊 SYNPATH TAKER FLOW NATGAS]: {fomo_msg}")
 
         if self.mode == "LIVE":
             if self.balance < DRAWDOWN_FLOOR:

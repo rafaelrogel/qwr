@@ -45,7 +45,8 @@ from risk_gate import (
     check_asia_session_drift_gate,
     validate_clob_spread_gate,
     check_dow_counter_trend_veto,
-    record_desk_trade_result
+    record_desk_trade_result,
+    check_kalshi_synpath_fomo_gate
 )
 from execution_math import (
     calculate_vwap_ask,
@@ -1630,6 +1631,35 @@ class LiveTrader:
         if should_trade_primary:
             print(f"\n    [ENTRADA QUANTITATIVA]: {target_side} | Preco Real (Microprice/VWAP): ${estimated_price:.4f}")
             print(f"       Racional: {rationale}")
+
+            # ── CROSS-VENUE SYNPATH FOMO TAKER FLOW GATE (BTC DUAL-VENUE INTELLIGENCE) ──
+            # Validado no Backtest de 164 operações do Desk 1:
+            # Elimina exaustão institucional extrema (> +0.80 & Vol >= 10k) com ZERO vitórias sacrificadas
+            try:
+                from zoneinfo import ZoneInfo
+                end_s = ((int(time.time()) // 900) + 1) * 900
+                end_u = datetime.fromtimestamp(end_s, tz=timezone.utc)
+                end_ny = end_u.astimezone(ZoneInfo("America/New_York"))
+                k_ticker = f"KXBTC15M-{end_ny.strftime('%y')}{end_ny.strftime('%b').upper()}{end_ny.strftime('%d')}{end_ny.strftime('%H')}{end_ny.strftime('%M')}-{end_ny.strftime('%M')}"
+                k_side = "YES" if target_side == "UP" else "NO"
+
+                fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                    ticker=k_ticker,
+                    target_side=k_side,
+                    threshold=0.80,
+                    min_volume=10000.0,
+                    window_sec=60
+                )
+                if not fomo_ok:
+                    print(f"       [🛑 VETO CROSS-VENUE SYNPATH ANTI-FOMO]: {fomo_msg}")
+                    print(f"          -> Kalshi {k_ticker}: Imbalance {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                    print(f"          -> Varejo em euforia extrema na Kalshi. Abortando entrada no Polymarket para proteger capital!")
+                    should_trade_primary = False
+                else:
+                    print(f"       [📊 CROSS-VENUE SYNPATH FLOW]: {fomo_msg} (Kalshi {k_ticker})")
+            except Exception as e:
+                print(f"       [Aviso Cross-Venue Synpath Gate]: {e}")
+
             maker_entry_attempted = False
             best_bid_clob = ob_metrics["best_bid"] if ob_metrics else 0.0
             best_ask_clob = ob_metrics["best_ask"] if ob_metrics else 0.0

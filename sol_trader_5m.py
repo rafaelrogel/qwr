@@ -39,7 +39,8 @@ from risk_gate import (
     validate_clob_spread_gate,
     check_sol_cross_asset_beta_lag_gate,
     check_dow_counter_trend_veto,
-    record_desk_trade_result
+    record_desk_trade_result,
+    check_kalshi_synpath_fomo_gate
 )
 from execution_math import (
     calculate_vwap_ask,
@@ -935,6 +936,32 @@ class SolanaTrader5M:
                                         continue
                                 except Exception as e:
                                     print(f"   [!] Aviso Jev Gate SOL: {e}")
+
+                                # ── CROSS-VENUE SYNPATH FOMO TAKER FLOW GATE (SOL DUAL-VENUE INTELLIGENCE) ──
+                                try:
+                                    from zoneinfo import ZoneInfo
+                                    end_s = ((int(time.time()) // 900) + 1) * 900
+                                    end_u = datetime.fromtimestamp(end_s, tz=timezone.utc)
+                                    end_ny = end_u.astimezone(ZoneInfo("America/New_York"))
+                                    k_ticker = f"KXSOL15M-{end_ny.strftime('%y')}{end_ny.strftime('%b').upper()}{end_ny.strftime('%d')}{end_ny.strftime('%H')}{end_ny.strftime('%M')}-{end_ny.strftime('%M')}"
+                                    k_side = "YES" if candidate_side == "UP" else "NO"
+
+                                    fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                        ticker=k_ticker,
+                                        target_side=k_side,
+                                        threshold=0.70,
+                                        min_volume=50.0,
+                                        window_sec=60
+                                    )
+                                    if not fomo_ok:
+                                        print(f"   [🛑 VETO CROSS-VENUE SYNPATH ANTI-FOMO SOL]: {fomo_msg}")
+                                        print(f"      -> Kalshi {k_ticker}: Imbalance {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                        print(f"      -> Varejo comprando no topo de exaustão na Kalshi. Abortando entrada no Polymarket para proteger capital!")
+                                        continue
+                                    else:
+                                        print(f"   [📊 CROSS-VENUE SYNPATH FLOW SOL]: {fomo_msg} (Kalshi {k_ticker})")
+                                except Exception as e:
+                                    print(f"   [Aviso Cross-Venue Synpath Gate SOL]: {e}")
 
                                 if self.mode == "LIVE":
                                     print(f"\n   🚀 [ENVIANDO ORDEM REAL POLYMARKET CLOB V2 ({candidate_side})]:")
