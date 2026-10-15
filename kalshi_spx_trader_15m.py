@@ -25,7 +25,8 @@ import urllib.parse
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 
-from risk_gate import compute_kalshi_dynamic_contracts
+from risk_gate import compute_kalshi_dynamic_contracts, check_kalshi_synpath_fomo_gate
+from variable_bench import bench
 
 # Windows UTF-8
 if sys.platform == "win32":
@@ -232,6 +233,31 @@ class KalshiClientV2:
     def get_orderbook(self, ticker: str) -> Optional[dict]:
         return self.request("GET", f"/markets/{ticker}/orderbook")
 
+    def get_real_balance(self) -> dict:
+        """Consulta saldo real segregado oficial na Kalshi"""
+        res = self.request("GET", "/portfolio/balance", auth_required=True)
+        shard2_bal = 0.0
+        total_bal = 0.0
+        if res:
+            if "balance_dollars" in res:
+                total_bal = float(res["balance_dollars"])
+            breakdowns = res.get("balance_breakdown", [])
+            for b in breakdowns:
+                if b.get("exchange_index") == 2:
+                    shard2_bal = float(b.get("balance", 0.0))
+        return {"total_balance": total_bal, "shard2_balance": shard2_bal}
+
+    def get_portfolio_settlement(self, ticker: str, max_retries: int = 6, delay: int = 3) -> Optional[dict]:
+        """Consulta liquidação oficial indiscutível no portfólio Kalshi (/portfolio/settlements)"""
+        for _ in range(max_retries):
+            res = self.request("GET", "/portfolio/settlements", auth_required=True)
+            if res and "settlements" in res:
+                for s in res["settlements"]:
+                    if s.get("ticker") == ticker:
+                        return s
+            time.sleep(delay)
+        return None
+
 
 # ===================== FEED SPOT S&P 500 (^GSPC) =====================
 _last_known_spx: float = 7743.41
@@ -386,10 +412,46 @@ class SPXTrader15M:
                         bids = book_data.get("yes" if pos_side == "YES" else "no", [])
                         best_bid = float(bids[0][0]) / 100.0 if bids else 0.0
 
-                        if best_bid >= TAKE_PROFIT_PRICE:
-                            payout = round(pos["contracts"] * best_bid, 4)
-                            pnl = round(payout - (pos["contracts"] * pos["entry_price"]), 4)
-                            self.balance = round(self.balance + pnl, 4)
+                        # Take-Profit SirMartingale com Saída em Escala (Raghee Horner / JEV)
+                        if best_bid >= TAKE_PROFIT_PRICE and not pos.get("tp1_executed", False):
+                            if pos["contracts"] >= 2:
+                                half_contracts = pos["contracts"] // 2
+                                payout_tp1 = round(half_contracts * best_bid, 4)
+                                pnl_tp1 = round(payout_tp1 - (half_contracts * pos["entry_price"]), 4)
+                                self.balance = round(self.balance + pnl_tp1, 4)
+                                pos["tp1_executed"] = True
+                                pos["tp1_pnl"] = pnl_tp1
+                                pos["contracts"] -= half_contracts
+                                pos["cost"] = round(pos["contracts"] * pos["entry_price"], 4)
+                                pos["breakeven_price"] = pos["entry_price"]
+                                self.save_open_position(pos)
+                                print(f"[SPX 15M (RAGHEE SCALE)] TP1 Parcial: {half_contracts}x vendido a ${best_bid:.2f} (+${pnl_tp1:.2f} USD)! Runner ({pos['contracts']}x) mantido com Stop Breakeven (${pos['entry_price']:.2f})!")
+                            else:
+                                payout = round(pos["contracts"] * best_bid, 4)
+                                pnl = round(payout - (pos["contracts"] * pos["entry_price"]), 4)
+                                self.balance = round(self.balance + pnl, 4)
+                                trade_rec = {
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "ticker": pos_ticker,
+                                    "side": pos_side,
+                                    "strike": pos["strike"],
+                                    "spot_entry": pos["spot_entry"],
+                                    "final_spot": spot,
+                                    "result": "VITÓRIA (TAKE-PROFIT ANTECIPADO)",
+                                    "payout": payout,
+                                    "pnl": pnl,
+                                    "balance": self.balance
+                                }
+                                self.record_trade(trade_rec)
+                                self.clear_open_position()
+                                print(f"[SPX 15M] Take-Profit integral executado a ${best_bid:.2f} | PnL: +${pnl:.2f} USD")
+
+                        # Monitoramento de Breakeven Stop no Runner (após TP1)
+                        elif pos.get("tp1_executed", False) and best_bid is not None and best_bid <= pos["entry_price"]:
+                            payout_be = round(pos["contracts"] * best_bid, 4)
+                            pnl_be = round(payout_be - pos["cost"], 4)
+                            total_pnl = round(pos.get("tp1_pnl", 0.0) + pnl_be, 4)
+                            self.balance = round(self.balance + pnl_be, 4)
                             trade_rec = {
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "ticker": pos_ticker,
@@ -397,17 +459,27 @@ class SPXTrader15M:
                                 "strike": pos["strike"],
                                 "spot_entry": pos["spot_entry"],
                                 "final_spot": spot,
-                                "result": "VITÓRIA (TAKE-PROFIT ANTECIPADO)",
-                                "payout": payout,
-                                "pnl": pnl,
+                                "result": "VITÓRIA (BREAKEVEN RUNNER)",
+                                "payout": round(pos.get("tp1_pnl", 0.0) + payout_be + pos["cost"], 4),
+                                "pnl": total_pnl,
                                 "balance": self.balance
                             }
                             self.record_trade(trade_rec)
                             self.clear_open_position()
-                            print(f"[SPX 15M] Take-Profit executado a ${best_bid:.2f} | PnL: +${pnl:.2f} USD")
+                            print(f"[SPX 15M (RAGHEE SCALE)] Runner estopado no Breakeven a ${best_bid:.2f}! Total PnL do trade: +${total_pnl:.2f} USD")
 
                 # 2. Avaliação de Nova Entrada Primária (Janela 600s - 660s | 95.33% WR)
                 elif sec_elapsed >= EVAL_POINT_SEC and sec_elapsed <= EVAL_MAX_SEC:
+                    is_benched, bench_reason, bench_rem = bench.check_coin_flip_breaker("desk11", JOURNAL_JSON)
+                    if not is_benched:
+                        is_benched, bench_reason, bench_rem = bench.is_benched("desk11")
+                    if is_benched:
+                        print(f"   [🛑 VARIABLE BENCH]: Desk 11 em cooldown ({bench_reason}) — restam {bench_rem:.1f}s.")
+                        state["status_signal"] = f"Bench Cooldown ({bench_reason}: {bench_rem:.0f}s)"
+                        self.update_live_state(state)
+                        time.sleep(min(15, max(3, int(bench_rem))))
+                        continue
+
                     if ticker not in self.traded_tickers and abs(delta) >= req_delta:
                         target_side = "YES" if delta >= req_delta else "NO"
                         ob = self.client.get_orderbook(ticker)
@@ -417,6 +489,24 @@ class SPXTrader15M:
                             best_ask = float(asks[0][0]) / 100.0 if asks else 0.52
 
                             if PRIMARY_MIN_PRICE <= best_ask <= PRIMARY_MAX_PRICE:
+                                # ── FILTRO ANTI-FOMO TAKER FLOW (SYNPATH TICK-LEVEL REAL-TIME) ──
+                                fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                    ticker=ticker,
+                                    target_side=target_side,
+                                    threshold=0.50,
+                                    min_volume=1000.0 if rth_active else 200.0,
+                                    window_sec=60
+                                )
+                                if not fomo_ok:
+                                    print(f"   [🛑 VETO SYNPATH ANTI-FOMO S&P 500]: {fomo_msg}")
+                                    print(f"      -> Taker Imbalance: {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                    state["status_signal"] = f"Veto Synpath FOMO ({fomo_data.get('imbalance', 0):+.2f})"
+                                    self.update_live_state(state)
+                                    time.sleep(15)
+                                    continue
+                                else:
+                                    print(f"   [📊 SYNPATH TAKER FLOW S&P 500]: {fomo_msg}")
+
                                 avail_qty = int(asks[0][1]) if (asks and len(asks[0]) > 1) else 1
                                 delta_ratio = abs(delta) / max(1.0, req_delta)
                                 win_prob = 0.76 if rth_active else 0.70
@@ -431,7 +521,7 @@ class SPXTrader15M:
                                     entry_price_cents=int(best_ask * 100),
                                     available_qty=avail_qty,
                                     delta_ratio=delta_ratio,
-                                    min_contracts=1,
+                                    min_contracts=2,
                                     max_contracts_cap=5
                                 )
                                 cost = round(contracts * best_ask, 4)
@@ -453,6 +543,11 @@ class SPXTrader15M:
 
                 # 3. Varredura Sweeper de Alta Certeza (Janela 780s - 830s | 98.87% WR)
                 elif sec_elapsed >= SWEEPER_POINT_SEC and sec_elapsed <= SWEEPER_MAX_SEC:
+                    is_benched, bench_reason, bench_rem = bench.is_benched("desk11")
+                    if is_benched:
+                        time.sleep(5)
+                        continue
+
                     if ticker not in self.traded_tickers and abs(delta) >= req_delta:
                         target_side = "YES" if delta >= req_delta else "NO"
                         ob = self.client.get_orderbook(ticker)
@@ -462,6 +557,24 @@ class SPXTrader15M:
                             best_ask = float(asks[0][0]) / 100.0 if asks else 0.88
 
                             if PRIMARY_MIN_PRICE <= best_ask <= SWEEPER_MAX_PRICE:
+                                # ── FILTRO ANTI-FOMO TAKER FLOW SWEEPER (SYNPATH TICK-LEVEL REAL-TIME) ──
+                                fomo_ok, fomo_msg, fomo_data = check_kalshi_synpath_fomo_gate(
+                                    ticker=ticker,
+                                    target_side=target_side,
+                                    threshold=0.50,
+                                    min_volume=1000.0 if rth_active else 200.0,
+                                    window_sec=60
+                                )
+                                if not fomo_ok:
+                                    print(f"   [🛑 VETO SYNPATH ANTI-FOMO SWEEPER S&P 500]: {fomo_msg}")
+                                    print(f"      -> Taker Imbalance: {fomo_data.get('imbalance', 0):+.2f} | Volume: {fomo_data.get('total_vol', 0):,.0f} contratos.")
+                                    state["status_signal"] = f"Veto Synpath Sweeper FOMO ({fomo_data.get('imbalance', 0):+.2f})"
+                                    self.update_live_state(state)
+                                    time.sleep(15)
+                                    continue
+                                else:
+                                    print(f"   [📊 SYNPATH SWEEPER TAKER FLOW S&P 500]: {fomo_msg}")
+
                                 avail_qty = int(asks[0][1]) if (asks and len(asks[0]) > 1) else 1
                                 delta_ratio = abs(delta) / max(1.0, req_delta)
                                 win_prob = 0.85
@@ -472,7 +585,7 @@ class SPXTrader15M:
                                     entry_price_cents=int(best_ask * 100),
                                     available_qty=avail_qty,
                                     delta_ratio=delta_ratio,
-                                    min_contracts=1,
+                                    min_contracts=2,
                                     max_contracts_cap=5
                                 )
                                 cost = round(contracts * best_ask, 4)
@@ -496,10 +609,49 @@ class SPXTrader15M:
                 if self.current_open_position and sec_left <= 5:
                     pos = self.current_open_position
                     pos_side = pos.get("side")
-                    win = (spot >= pos["strike"]) if pos_side == "YES" else (spot < pos["strike"])
-                    payout = pos["contracts"] * 1.0 if win else 0.0
-                    pnl = round(payout - pos["cost"], 4)
-                    self.balance = round(self.balance + pnl, 4)
+                    win = None
+                    revenue_official = None
+                    if self.mode == "LIVE":
+                        print(f"   -> [CFTC CLEARING] Consultando liquidação oficial no portfólio Kalshi ({pos['ticker']})...")
+                        time.sleep(5)
+                        port_settle = self.client.get_portfolio_settlement(pos['ticker'], max_retries=6, delay=3)
+                        if port_settle:
+                            k_res = str(port_settle.get("market_result", "")).lower()
+                            win = (pos_side.lower() == k_res)
+                            rev_cents = float(port_settle.get("revenue", 0))
+                            revenue_official = rev_cents / 100.0
+                            print(f"   [🏛️ LIQUIDAÇÃO OFICIAL KALSHI SPX]: Resultado: {k_res.upper()} | Revenue: ${revenue_official:.2f}")
+
+                    if win is None:
+                        win = (spot >= pos["strike"]) if pos_side == "YES" else (spot < pos["strike"])
+
+                    if pos.get("tp1_executed", False):
+                        payout_runner = revenue_official if revenue_official is not None else (pos["contracts"] * 1.0 if win else 0.0)
+                        pnl_runner = round(payout_runner - pos["cost"], 4)
+                        total_pnl = round(pos.get("tp1_pnl", 0.0) + pnl_runner, 4)
+                        payout = round(pos.get("tp1_pnl", 0.0) + pos["cost"] + payout_runner, 4)
+                        pnl = total_pnl
+                        res_str = f"VITÓRIA SCALE RUNNER (+${total_pnl:.2f})" if win else f"DEFESA TP1 (+${total_pnl:.2f})"
+                        if self.mode == "LIVE":
+                            time.sleep(3)
+                            b_info = self.client.get_real_balance()
+                            real_s2 = b_info.get("shard2_balance")
+                            if real_s2 and real_s2 > 0:
+                                self.balance = real_s2
+                        else:
+                            self.balance = round(self.balance + pnl_runner, 4)
+                    else:
+                        payout = revenue_official if revenue_official is not None else (pos["contracts"] * 1.0 if win else 0.0)
+                        pnl = round(payout - pos["cost"], 4)
+                        res_str = f"VITÓRIA (+${pnl:.2f})" if win else f"DERROTA (-${pos['cost']:.2f})"
+                        if self.mode == "LIVE":
+                            time.sleep(3)
+                            b_info = self.client.get_real_balance()
+                            real_s2 = b_info.get("shard2_balance")
+                            if real_s2 and real_s2 > 0:
+                                self.balance = real_s2
+                        else:
+                            self.balance = round(self.balance + pnl, 4)
 
                     trade_rec = {
                         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -508,13 +660,12 @@ class SPXTrader15M:
                         "strike": pos["strike"],
                         "spot_entry": pos["spot_entry"],
                         "final_spot": spot,
-                        "result": "VITÓRIA" if win else "DERROTA",
+                        "result": res_str,
                         "payout": payout,
                         "pnl": pnl,
                         "balance": self.balance
                     }
                     self.record_trade(trade_rec)
-                    res_str = f"VITÓRIA (+${pnl:.2f})" if win else f"DERROTA (-${pos['cost']:.2f})"
                     self.clear_open_position()
                     print(f"[SPX 15M] Apuração Final: {res_str}")
 

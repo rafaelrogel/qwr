@@ -359,6 +359,8 @@ def check_fat_tail_hazard(
             f"Negative EV por curtose excessiva comprovada nos dados históricos."
         )
 
+    return True, f"APROVADO_CAUDA_SEGURA: Buffer de cauda aprovado ({strike_distance_pct:.2%} a {hours_remaining:.1f}h do vencimento)."
+
 def calculate_ornstein_uhlenbeck_halflife(
     series: List[float],
     dt: float = 1.0

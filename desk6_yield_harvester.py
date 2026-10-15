@@ -616,10 +616,31 @@ def execute_harvest_cycle():
 
         if audit["approved"]:
             print(f"   ✅ [APROVADO PELO JEV]: Mercado atende a todos os critérios de pureza institucional!")
+
+            # 2.5. Validação de Profundidade L2 no Livro Real (Synpath SDK)
+            price = cand["price"]
+            try:
+                import synpath
+                if platform == "Kalshi":
+                    k_client = synpath.Kalshi()
+                    syn_book = k_client.fetch_order_book(f"kalshi:{cand_id}")
+                    if syn_book and syn_book.best_ask:
+                        real_ask = float(syn_book.best_ask.price)
+                        real_size = float(syn_book.best_ask.size)
+                        if real_ask > MAX_PRICE:
+                            print(f"   [🛑 VETO SYNPATH L2 KALSHI]: Preço real ${real_ask:.3f} > teto {MAX_PRICE:.3f}")
+                            continue
+                        if real_size < 1.0:
+                            print(f"   [🛑 VETO SYNPATH L2 KALSHI]: Livro vazio / tamanho insuficiente ({real_size:.1f} ctos)")
+                            continue
+                        price = real_ask
+                        print(f"   [📊 SYNPATH L2 KALSHI]: Livro confirmado — Best Ask: ${price:.3f} | Tamanho: {real_size:.0f} ctos")
+            except Exception:
+                pass
+
             approved_count += 1
             
             # 3. Execução Determinística (PAPER / LIVE)
-            price = cand["price"]
             stake = FIXED_STAKE
             shares = round(stake / price, 4)
             pot_profit = round((shares * 1.00) - stake, 4)
